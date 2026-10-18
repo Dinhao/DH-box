@@ -1294,11 +1294,11 @@ function renderTree(node, container, depth, pathArr) {
     if (child.type !== "dir") continue;
     const row = document.createElement("div");
     row.className = "tree-item";
-    const cur = pathArr.length === depth && state.cwd.length === depth && state.cwd[depth-1]?.name === child.name;
+    const cur = state.cwd.length === depth && state.cwd[depth - 1]?.name === child.name;
     if (cur) row.classList.add("current");
     row.style.paddingLeft = (10 + depth * 14) + "px";
     row.innerHTML = `<span class="tree-arrow">${child.children.some(c=>c.type==="dir") ? "▶" : ""}</span><span>📁</span><span>${esc(child.name)}</span>`;
-    row.onclick = () => { state.cwd = pathArr.concat([child.name]); selectedName = null; renderAll(); };
+    row.onclick = () => { state.cwd = pathArr.concat([child.name]).map((n) => ({ name: n })); selectedName = null; renderAll(); };
     container.appendChild(row);
     renderTree(child, container, depth + 1, pathArr.concat([child.name]));
   }
