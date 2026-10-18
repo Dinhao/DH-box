@@ -1,0 +1,2124 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DH-BOX · 文件加密保险库</title>
+<style>
+  /* ================= 主题变量 ================= */
+  :root {
+    --bg: #f2f4f9;
+    --bg-soft: #ffffff;
+    --card: #ffffff;
+    --card-2: #eef1f8;
+    --line: #dbe1ec;
+    --text: #1c2434;
+    --text-dim: #5d6b84;
+    --text-faint: #94a0b5;
+    --accent: #2f6fe4;
+    --accent-strong: #2359bd;
+    --accent-soft: rgba(47, 111, 228, .10);
+    --danger: #e0485a;
+    --danger-soft: rgba(224, 72, 90, .10);
+    --ok: #17a06b;
+    --ok-soft: rgba(23, 160, 107, .12);
+    --warn: #c98a12;
+    --scroll-thumb: #c3ccdc;
+    --scroll-thumb-hover: #a9b5cb;
+    --log-bg: #f7f9fd;
+    --log-line: #dde3ee;
+    --log-time: #98a4ba;
+    --menu-bg: #ffffff;
+    --menu-hover: #eef2fa;
+    --menu-sep: #e4e9f2;
+    --shadow: 0 10px 30px rgba(23, 35, 61, .14);
+    --shadow-sm: 0 4px 14px rgba(23, 35, 61, .10);
+    --mask: rgba(20, 28, 44, .35);
+    --radius: 12px;
+    --font: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  [data-theme="dark"] {
+    --bg: #0e1116;
+    --bg-soft: #141922;
+    --card: #1a2130;
+    --card-2: #202a3c;
+    --line: #2b3648;
+    --text: #e8edf5;
+    --text-dim: #8b96a8;
+    --text-faint: #5b6577;
+    --accent: #4f8cff;
+    --accent-strong: #6ea2ff;
+    --accent-soft: rgba(79, 140, 255, .14);
+    --danger: #ff5d6c;
+    --danger-soft: rgba(255, 93, 108, .12);
+    --ok: #37c98b;
+    --ok-soft: rgba(55, 201, 139, .12);
+    --warn: #f5b845;
+    --scroll-thumb: #333f55;
+    --scroll-thumb-hover: #45536d;
+    --log-bg: #0a0d12;
+    --log-line: #232d3f;
+    --log-time: #55617a;
+    --menu-bg: #1c2434;
+    --menu-hover: #263146;
+    --menu-sep: #2b3648;
+    --shadow: 0 18px 50px rgba(0, 0, 0, .5);
+    --shadow-sm: 0 6px 18px rgba(0, 0, 0, .35);
+    --mask: rgba(5, 8, 14, .62);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    user-select: none;
+    transition: background .2s;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb);
+    border-radius: 6px;
+    border: 2px solid var(--card);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--line);
+    transition: background .2s, border-color .2s;
+  }
+  .logo {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #2f6fe4, #6a3de8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 3px 10px rgba(47, 111, 228, .35);
+  }
+  .brand-name { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+  .brand-name em { font-style: normal; color: var(--accent); }
+  .brand-sub { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+  .topbar-spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12.5px;
+    color: var(--ok);
+    background: var(--ok-soft);
+    border: 1px solid rgba(23, 160, 107, .3);
+    padding: 5px 12px;
+    border-radius: 999px;
+  }
+  [data-theme="dark"] .status-pill { border-color: rgba(55, 201, 139, .3); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .top-btn {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: .15s;
+    font-family: var(--font);
+  }
+  .top-btn:hover { border-color: var(--accent); background: var(--card-2); }
+  .top-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* ---------- 窗口按钮（无边框窗口：网页顶栏即标题栏） ---------- */
+.topbar { -webkit-user-select: none; user-select: none; }
+.win-btns { display: flex; align-items: center; gap: 4px; margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--line); }
+.win-btn {
+  width: 40px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: var(--text); opacity: .78; font-family: inherit; cursor: default; padding: 0;
+  transition: background .12s ease, color .12s ease, opacity .12s ease;
+}
+.win-btn:hover { background: rgba(128, 138, 164, .26); opacity: 1; }
+.win-btn:active { background: rgba(128, 138, 164, .42); opacity: 1; }
+.win-btn.close:hover { background: #e5484d; border-color: #e5484d; color: #fff; opacity: 1; }
+.win-btn.close:active { background: #c93c41; border-color: #c93c41; color: #fff; }
+.win-btn svg { width: 15px; height: 15px; display: block; }
+.win-btn svg * { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.win-max .ico-restore { display: none; }
+.win-max.is-maximized .ico-max { display: none; }
+.win-max.is-maximized .ico-restore { display: block; }
+.lock-win-btns { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; }
+/* ---------- 顶部缩放抓取提示条（鼠标进入窗口顶端时出现） ---------- */
+.resize-hint {
+  position: fixed; left: 50%; top: 0; transform: translateX(-50%);
+  width: 96px; height: 3px; border-radius: 0 0 3px 3px;
+  background: var(--accent); opacity: 0; transition: opacity .15s ease;
+  pointer-events: none; z-index: 999;
+}
+.resize-hint.visible { opacity: .6; }
+.lock-overlay { -webkit-user-select: none; user-select: none; }                 /* 拖动时避免选中文字 */
+.lock-overlay input, .lock-overlay textarea { -webkit-user-select: text; user-select: text; }
+  #btnTheme { width: 38px; padding: 8px 0; justify-content: center; font-size: 15px; }
+
+  /* ---------- 布局 ---------- */
+  .layout { display: flex; height: calc(100vh - 60px); }
+
+  /* ---------- 侧边目录树 ---------- */
+  .sidebar {
+    width: 230px;
+    background: var(--bg-soft);
+    border-right: 1px solid var(--line);
+    padding: 16px 10px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: background .2s;
+  }
+  .sidebar-title {
+    font-size: 11.5px;
+    letter-spacing: 1px;
+    color: var(--text-faint);
+    padding: 0 8px 10px;
+    text-transform: uppercase;
+  }
+  .tree-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    cursor: pointer;
+    color: var(--text-dim);
+  }
+  .tree-item:hover { background: var(--card-2); color: var(--text); }
+  .tree-item.current { background: var(--accent-soft); color: var(--accent); }
+  .tree-arrow { font-size: 10px; width: 12px; color: var(--text-faint); }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    padding: 14px 20px 0;
+    font-size: 13.5px;
+    color: var(--text-dim);
+  }
+  .crumb { cursor: pointer; padding: 3px 6px; border-radius: 6px; }
+  .crumb:hover { background: var(--card-2); color: var(--text); }
+  .crumb-sep { color: var(--text-faint); }
+  .crumb.current { color: var(--text); font-weight: 600; cursor: default; }
+  .crumb.current:hover { background: transparent; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 20px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 9px;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    transition: .15s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #2f6fe4, #5b6cf0);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-primary:hover { filter: brightness(1.12); box-shadow: 0 4px 16px rgba(47, 111, 228, .35); }
+  .btn-ghost { background: var(--card); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent); background: var(--card-2); }
+  .btn-danger { background: var(--danger-soft); color: var(--danger); border-color: rgba(224, 72, 90, .4); }
+  [data-theme="dark"] .btn-danger { color: #ff9aa5; border-color: rgba(255, 93, 108, .4); }
+  .btn-danger:hover { background: rgba(224, 72, 90, .2); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .file-panel {
+    flex: 1;
+    margin: 0 20px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow-y: auto;
+    min-height: 0;
+    transition: background .2s;
+  }
+  .file-head, .file-row {
+    display: grid;
+    align-items: center;
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .file-head {
+    position: sticky; top: 0; z-index: 2;
+    height: 38px;
+    background: var(--card-2);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--text-dim);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .file-head .col-size, .file-head .col-mtime, .file-head .col-ctime { text-align: right; }
+  .file-head .col-enc { text-align: center; }
+  .file-row {
+    height: 46px;
+    border-bottom: 1px solid var(--log-line);
+    cursor: pointer;
+    font-size: 13.5px;
+  }
+  .file-row:last-child { border-bottom: none; }
+  .file-row:hover { background: var(--card-2); }
+  .file-row.selected { background: var(--accent-soft); }
+  .file-icon { font-size: 17px; text-align: center; }
+  .file-name { display: flex; align-items: center; gap: 8px; overflow: hidden; min-width: 0; }
+  .file-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lock-badge, .plain-badge {
+    font-size: 10px; border-radius: 4px; padding: 1px 5px; flex-shrink: 0;
+  }
+  .lock-badge { color: var(--accent); background: var(--accent-soft); }
+  .plain-badge { color: var(--text-faint); background: var(--card-2); border: 1px solid var(--line); }
+  .file-meta { font-size: 12.5px; color: var(--text-dim); }
+  .file-row .col-size, .file-row .col-mtime, .file-row .col-ctime { text-align: right; }
+  .file-row .col-enc { text-align: center; }
+  .enc-yes { color: var(--accent); font-size: 12px; }
+  .enc-no { color: var(--text-faint); font-size: 12px; }
+  .empty-state {
+    padding: 70px 0;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 14px;
+  }
+  .empty-state .big { font-size: 40px; margin-bottom: 12px; opacity: .6; }
+
+  .statusbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 20px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .clip-chip {
+    display: none;
+    align-items: center; gap: 6px;
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .clip-chip.show { display: inline-flex; }
+
+  /* ---------- 设置页 ---------- */
+  .settings-wrap { display: none; flex: 1; min-width: 0; overflow: hidden; }
+  .settings-wrap.visible { display: flex; }
+  .settings-nav {
+    width: 210px;
+    background: var(--bg-soft);
+    border-right: 1px solid var(--line);
+    padding: 18px 10px;
+    flex-shrink: 0;
+    transition: background .2s;
+  }
+  .settings-nav .back {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 13px; color: var(--text-dim);
+    padding: 8px 10px; margin-bottom: 14px;
+    border-radius: 8px; cursor: pointer;
+  }
+  .settings-nav .back:hover { background: var(--card-2); color: var(--text); }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    margin-bottom: 4px;
+  }
+  .nav-item:hover { background: var(--card-2); color: var(--text); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); }
+
+  .settings-body { flex: 1; padding: 24px 30px; overflow-y: auto; min-width: 0; }
+  .settings-tab { display: none; max-width: 760px; }
+  .settings-tab.visible { display: block; }
+  .tab-title { font-size: 19px; font-weight: 700; margin-bottom: 4px; }
+  .tab-desc { font-size: 13px; color: var(--text-dim); margin-bottom: 22px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+    transition: background .2s;
+  }
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 6px; }
+  .input {
+    width: 100%;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--font);
+    padding: 10px 12px;
+    outline: none;
+    transition: .15s;
+  }
+  .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+  .field-err { font-size: 12px; color: var(--danger); margin-top: 5px; min-height: 15px; }
+  .pw-hint { font-size: 12px; color: var(--text-faint); margin-top: 6px; line-height: 1.6; }
+  .strength { display: flex; gap: 5px; margin-top: 8px; }
+  .strength i { height: 4px; flex: 1; background: var(--line); border-radius: 3px; }
+  .strength[data-level="1"] i:nth-child(1) { background: var(--danger); }
+  .strength[data-level="2"] i:nth-child(-n+2) { background: var(--warn); }
+  .strength[data-level="3"] i:nth-child(-n+3) { background: #6ea2ff; }
+  .strength[data-level="4"] i { background: var(--ok); }
+  .strength-label { font-size: 12px; color: var(--text-faint); margin-top: 5px; }
+
+  /* 日志 */
+  .log-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .log-path {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-bottom: 12px;
+    word-break: break-all;
+  }
+  .log-view {
+    background: var(--log-bg);
+    border: 1px solid var(--log-line);
+    border-radius: 10px;
+    height: 430px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 12.3px;
+    line-height: 1.75;
+    padding: 12px 14px;
+    user-select: text;
+  }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
+  .log-time { color: var(--log-time); }
+  .log-lv { font-weight: 700; }
+  .log-lv.info { color: var(--accent); }
+  .log-lv.warn { color: var(--warn); }
+  .log-lv.error { color: var(--danger); }
+  .log-lv.ok { color: var(--ok); }
+
+  /* 自动锁定 */
+  .mode-row {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: .15s;
+  }
+  .mode-row:hover { border-color: var(--accent); }
+  .mode-row.active { border-color: var(--accent); background: var(--accent-soft); }
+  .mode-radio {
+    width: 17px; height: 17px; border-radius: 50%;
+    border: 2px solid var(--text-faint);
+    flex-shrink: 0; margin-top: 2px;
+    position: relative;
+  }
+  .mode-row.active .mode-radio { border-color: var(--accent); }
+  .mode-row.active .mode-radio::after {
+    content: ""; position: absolute; inset: 3px;
+    border-radius: 50%; background: var(--accent);
+  }
+  .mode-title { font-size: 14px; font-weight: 600; }
+  .mode-desc { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.6; }
+  .mode-body { margin-top: 12px; display: none; align-items: center; gap: 10px; }
+  .mode-row.active .mode-body { display: flex; }
+  .stepper { display: flex; align-items: stretch; }
+  .stepper button {
+    width: 34px;
+    background: var(--card-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+    font-family: var(--font);
+  }
+  .stepper button:first-child { border-radius: 8px 0 0 8px; }
+  .stepper button:last-child { border-radius: 0 8px 8px 0; }
+  .stepper button:hover { background: var(--accent-soft); }
+  .stepper input {
+    width: 76px;
+    text-align: center;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-left: none; border-right: none;
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+  }
+  .stepper input:focus { background: var(--card-2); }
+  .unit { font-size: 13px; color: var(--text-dim); }
+  .deadline-note {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-top: 14px;
+    line-height: 1.7;
+  }
+  .deadline-note b { color: var(--text-dim); font-weight: 600; }
+  .save-row { margin-top: 8px; display: flex; align-items: center; gap: 12px; }
+
+  /* ---------- 列设置下拉 ---------- */
+  .cols-menu {
+    position: absolute;
+    z-index: 30;
+    width: 190px;
+    background: var(--menu-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 8px;
+    display: none;
+  }
+  .cols-menu.visible { display: block; }
+  .cols-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .cols-item:hover { background: var(--menu-hover); }
+  .cols-item input { accent-color: var(--accent); cursor: pointer; }
+  .cols-item.disabled { opacity: .5; cursor: not-allowed; }
+  .cols-item.disabled:hover { background: transparent; }
+  .cols-note { font-size: 11px; color: var(--text-faint); padding: 5px 10px 7px; }
+
+  /* ---------- 右键菜单 ---------- */
+  .ctx-menu {
+    position: fixed;
+    z-index: 40;
+    min-width: 176px;
+    background: var(--menu-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 6px;
+    display: none;
+  }
+  .ctx-menu.visible { display: block; }
+  .ctx-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .ctx-item:hover { background: var(--menu-hover); }
+  .ctx-item.disabled { opacity: .4; cursor: not-allowed; }
+  .ctx-item.disabled:hover { background: transparent; }
+  .ctx-item.danger { color: var(--danger); }
+  .ctx-item .ctx-ico { width: 16px; text-align: center; flex-shrink: 0; }
+  .ctx-sep { height: 1px; background: var(--menu-sep); margin: 5px 8px; }
+
+  /* ---------- 弹窗 & 提示 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0;
+    background: var(--mask);
+    backdrop-filter: blur(3px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .modal-mask.visible { display: flex; }
+  .modal {
+    width: 380px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+  }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .modal-msg { font-size: 13.5px; color: var(--text-dim); line-height: 1.7; }
+
+  /* 属性弹窗 */
+  .props-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .props-table td { padding: 7px 4px; border-bottom: 1px solid var(--log-line); vertical-align: top; }
+  .props-table td:first-child { color: var(--text-dim); width: 86px; white-space: nowrap; }
+  .props-table tr:last-child td { border-bottom: none; }
+
+  .toast {
+    position: fixed;
+    left: 50%; bottom: 34px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--menu-bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 13.5px;
+    padding: 11px 20px;
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: .25s;
+    z-index: 60;
+    box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { border-color: rgba(23, 160, 107, .5); }
+  .toast.err { border-color: rgba(224, 72, 90, .5); }
+  [data-theme="dark"] .toast.ok { border-color: rgba(55, 201, 139, .5); }
+  [data-theme="dark"] .toast.err { border-color: rgba(255, 93, 108, .5); }
+
+  /* 锁定覆盖层 */
+  .lock-overlay {
+    position: fixed; inset: 0;
+    z-index: 80;
+    background: var(--bg);
+    display: none;
+    align-items: center; justify-content: center;
+  }
+  .lock-overlay.visible { display: flex; }
+  .lock-box {
+    width: 360px;
+    text-align: center;
+    padding: 40px 34px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+  }
+  .lock-logo { font-size: 52px; margin-bottom: 14px; }
+  .lock-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .lock-desc { font-size: 13px; color: var(--text-dim); margin-bottom: 22px; }
+  .lock-box .input { margin-bottom: 6px; text-align: center; }
+  .lock-box .field-err { margin-bottom: 12px; }
+  /* 锁定状态徽章 */
+  .status-pill.locked {
+    color: var(--danger);
+    background: var(--danger-soft);
+    border-color: rgba(224, 72, 90, .35);
+  }
+  [data-theme="dark"] .status-pill.locked { border-color: rgba(255, 93, 108, .35); }
+  .status-pill.locked .status-dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+</style>
+</head>
+<body>
+
+<!-- ================= 顶栏 ================= -->
+<header class="topbar">
+  <div class="logo">🛡️</div>
+  <div>
+    <span class="brand-name">DH<em>-BOX</em></span>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="status-pill" id="statusPill"><span class="status-dot"></span><span id="statusText">保险库已解锁</span></div>
+  <button class="top-btn" id="btnLock" title="锁定保险库">🔒 锁定</button>
+  <button class="top-btn" id="btnMain" title="主界面">🗂️ 主界面</button>
+  <button class="top-btn" id="btnSettings" title="设置">⚙️ 设置</button>
+  <button class="top-btn" id="btnTheme" title="切换浅色/深色主题">🌙</button>
+  <div class="win-btns">
+    <button class="win-btn win-min" id="winMin" title="最小化" aria-label="最小化">
+      <svg viewBox="0 0 14 14"><line x1="2.6" y1="7" x2="11.4" y2="7"/></svg>
+    </button>
+    <button class="win-btn win-max" id="winMax" title="最大化" aria-label="最大化">
+      <svg class="ico-max" viewBox="0 0 14 14"><rect x="2.6" y="2.6" width="8.8" height="8.8" rx="1.6"/></svg>
+      <svg class="ico-restore" viewBox="0 0 14 14"><rect x="2.6" y="4.9" width="6.5" height="6.5" rx="1.4"/><path d="M5.3 2.6h6.1v6.1"/></svg>
+    </button>
+    <button class="win-btn close win-close" id="winClose" title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 14 14"><path d="M3.4 3.4l7.2 7.2M10.6 3.4l-7.2 7.2"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ================= 主界面：侧边目录树 ================= -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-title">保险库目录</div>
+    <div id="treeRoot"></div>
+  </aside>
+
+  <!-- ================= 主界面：文件区 ================= -->
+  <section class="main" id="viewMain">
+    <nav class="breadcrumb" id="breadcrumb"></nav>
+    <div class="toolbar">
+      <button class="btn btn-ghost" id="btnUp" title="返回上一级">⬅️ 返回上级</button>
+      <button class="btn btn-primary" id="btnNewFolder">📁 新建文件夹</button>
+      <button class="btn btn-ghost" id="btnPaste" title="粘贴">📥 粘贴</button>
+      <button class="btn btn-ghost" id="btnCols" title="增删列">📋 列设置</button>
+      <div style="flex:1"></div>
+      <span style="font-size:12.5px;color:var(--text-faint)">双击进入文件夹 · 右键更多操作</span>
+    </div>
+    <div class="file-panel" id="filePanel">
+      <div class="file-head" id="fileHead"></div>
+      <div id="fileList"></div>
+    </div>
+    <footer class="statusbar">
+      <span id="statItems"></span>
+      <span id="statSize"></span>
+      <span class="clip-chip" id="clipChip"></span>
+      <span style="margin-left:auto">AES-256 全盘加密</span>
+    </footer>
+  </section>
+
+  <!-- ================= 设置界面 ================= -->
+  <section class="settings-wrap" id="viewSettings">
+    <aside class="settings-nav">
+      <div class="back" id="btnBackMain">← 返回主界面</div>
+      <div class="nav-item active" data-tab="password">🔑 修改密码</div>
+      <div class="nav-item" data-tab="logs">📜 查看日志</div>
+      <div class="nav-item" data-tab="autolock">⏱️ 自动锁定</div>
+    </aside>
+
+    <div class="settings-body">
+
+      <!-- 修改密码 -->
+      <div class="settings-tab visible" id="tab-password">
+        <div class="tab-title">修改密码</div>
+        <div class="tab-desc">修改保险库主密码。修改后请妥善保管新密码，遗忘将无法恢复数据。</div>
+        <div class="card">
+          <div class="field">
+            <label>旧密码</label>
+            <input class="input" type="password" id="pwOld" placeholder="请输入当前密码" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>新密码</label>
+            <input class="input" type="password" id="pwNew" placeholder="6 位以上，建议包含大小写字母与数字" autocomplete="off">
+            <div class="strength" data-level="0" id="pwStrength"><i></i><i></i><i></i><i></i></div>
+            <div class="strength-label" id="pwStrengthLabel">请输入新密码</div>
+          </div>
+          <div class="field">
+            <label>确认新密码</label>
+            <input class="input" type="password" id="pwConfirm" placeholder="再次输入新密码" autocomplete="off">
+            <div class="field-err" id="pwErr"></div>
+          </div>
+          <button class="btn btn-primary" id="btnChangePw">修改密码</button>
+        </div>
+      </div>
+
+      <!-- 查看日志 -->
+      <div class="settings-tab" id="tab-logs">
+        <div class="tab-title">查看日志</div>
+        <div class="tab-desc">运行日志仅保存在本机，用于问题排查与安全审计。</div>
+        <div class="card">
+          <div class="log-toolbar">
+            <button class="btn btn-ghost" id="btnRefreshLog">🔄 刷新</button>
+            <button class="btn btn-danger" id="btnClearLog">🗑️ 清空日志</button>
+            <span style="flex:1"></span>
+            <span style="font-size:12px;color:var(--text-faint)" id="logCount"></span>
+          </div>
+          <div class="log-path" id="logPathLine">日志文件路径：程序目录\vault.log（与 DH-BOX.exe 同目录）</div>
+          <div class="log-view" id="logView"></div>
+        </div>
+      </div>
+
+      <!-- 自动锁定 -->
+      <div class="settings-tab" id="tab-autolock">
+        <div class="tab-title">自动锁定</div>
+        <div class="tab-desc">无人操作一段时间后自动锁定保险库；或设定一个临时解锁截止时刻，到点自动锁定。</div>
+        <div class="card">
+          <div class="mode-row active" id="modeDuration">
+            <div class="mode-radio"></div>
+            <div style="flex:1">
+              <div class="mode-title">⏲️ 自定义时长模式</div>
+              <div class="mode-desc">界面无操作（鼠标/键盘均无动作）超过设定时长后自动锁定保险库，默认 20 分钟。</div>
+              <div class="mode-body">
+                <div class="stepper">
+                  <button id="btnMinus">−</button>
+                  <input type="number" id="durationInput" min="1" max="1440" step="1" value="20">
+                  <button id="btnPlus">＋</button>
+                </div>
+                <span class="unit">分钟（1 ~ 1440 的整数）</span>
+              </div>
+            </div>
+          </div>
+          <div class="mode-row" id="modeUntil">
+            <div class="mode-radio"></div>
+            <div style="flex:1">
+              <div class="mode-title">📍 定点临时解锁模式</div>
+              <div class="mode-desc">临时解锁到未来某一时刻，期间无需重复输入密码，到点自动锁定。</div>
+              <div class="mode-body">
+                <input class="input" type="datetime-local" id="untilInput" style="max-width:230px">
+              </div>
+            </div>
+          </div>
+          <div class="deadline-note" id="deadlineNote"></div>
+          <div class="save-row">
+            <button class="btn btn-primary" id="btnSaveLock">💾 保存设置</button>
+            <span style="font-size:12px;color:var(--text-faint)">保存后立即生效</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<!-- 列设置下拉 -->
+<div class="cols-menu" id="colsMenu"></div>
+
+<!-- 右键菜单 -->
+<div class="ctx-menu" id="ctxMenu"></div>
+
+<!-- 新建文件夹弹窗 -->
+<div class="modal-mask" id="newFolderModal">
+  <div class="modal">
+    <div class="modal-title">📁 新建文件夹</div>
+    <div class="field">
+      <label>文件夹名称</label>
+      <input class="input" id="newFolderName" placeholder="例如：工作资料" maxlength="40">
+      <div class="field-err" id="newFolderErr"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnNewCancel">取消</button>
+      <button class="btn btn-primary" id="btnNewConfirm">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重命名弹窗 -->
+<div class="modal-mask" id="renameModal">
+  <div class="modal">
+    <div class="modal-title">✏️ 重命名</div>
+    <div class="field">
+      <label>新名称</label>
+      <input class="input" id="renameInput" maxlength="60">
+      <div class="field-err" id="renameErr"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnRenameCancel">取消</button>
+      <button class="btn btn-primary" id="btnRenameConfirm">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal-mask" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ 删除</div>
+    <div class="modal-msg" id="deleteMsg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnDeleteCancel">取消</button>
+      <button class="btn btn-danger" id="btnDeleteConfirm">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 属性弹窗 -->
+<div class="modal-mask" id="propsModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">ℹ️ 属性</div>
+    <table class="props-table" id="propsTable"></table>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="btnPropsClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 清空日志确认弹窗 -->
+<div class="modal-mask" id="clearLogModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ 清空日志</div>
+    <div style="font-size:13.5px;color:var(--text-dim);line-height:1.7">确定要清空全部日志吗？此操作不可恢复。</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btnClearCancel">取消</button>
+      <button class="btn btn-danger" id="btnClearConfirm">清空</button>
+    </div>
+  </div>
+</div>
+
+<!-- 首次设置密码弹窗 -->
+<div class="modal-mask" id="setupModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title">🔐 首次使用 · 设置主密码</div>
+    <div class="modal-msg" style="margin-bottom:16px">欢迎使用 DH-BOX。请先设置一个主密码，用于锁定与解锁保险库。<br>请务必牢记，密码一旦遗忘将无法恢复数据。</div>
+    <div class="field">
+      <label>主密码</label>
+      <input class="input" type="password" id="setupPass" placeholder="6 位以上，建议包含大小写字母与数字" autocomplete="off">
+      <div class="strength" data-level="0" id="setupStrength"><i></i><i></i><i></i><i></i></div>
+      <div class="strength-label" id="setupStrengthLabel">请输入主密码</div>
+    </div>
+    <div class="field">
+      <label>确认主密码</label>
+      <input class="input" type="password" id="setupPassConfirm" placeholder="再次输入主密码" autocomplete="off">
+      <div class="field-err" id="setupErr"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="btnSetupConfirm">设置密码并进入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 锁定覆盖层 -->
+<div class="lock-overlay" id="lockOverlay">
+  <div class="lock-win-btns">
+    <button class="win-btn win-min" title="最小化" aria-label="最小化">
+      <svg viewBox="0 0 14 14"><line x1="2.6" y1="7" x2="11.4" y2="7"/></svg>
+    </button>
+    <button class="win-btn win-max" title="最大化" aria-label="最大化">
+      <svg class="ico-max" viewBox="0 0 14 14"><rect x="2.6" y="2.6" width="8.8" height="8.8" rx="1.6"/></svg>
+      <svg class="ico-restore" viewBox="0 0 14 14"><rect x="2.6" y="4.9" width="6.5" height="6.5" rx="1.4"/><path d="M5.3 2.6h6.1v6.1"/></svg>
+    </button>
+    <button class="win-btn close win-close" title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 14 14"><path d="M3.4 3.4l7.2 7.2M10.6 3.4l-7.2 7.2"/></svg>
+    </button>
+  </div>
+  <div class="lock-box">
+    <div class="lock-logo">🔒</div>
+    <div class="lock-title">保险库已锁定</div>
+    <div class="lock-desc">输入主密码以解锁 DH-BOX</div>
+    <input class="input" type="password" id="unlockPass" placeholder="主密码" autocomplete="off">
+    <div class="field-err" id="unlockErr" style="text-align:left"></div>
+    <button class="btn btn-primary" id="btnUnlock" style="width:100%;justify-content:center">解锁</button>
+  </div>
+</div>
+
+<div class="resize-hint" id="resizeHint"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ================= DH-BOX C# 后端桥接（WebView2 postMessage） ================= */
+const bridge = (() => {
+  let seq = 0;
+  const pending = new Map();
+  const wv = window.chrome && window.chrome.webview ? window.chrome.webview : null;
+  function post(cmd, args) {
+    return new Promise((resolve, reject) => {
+      if (!wv) { reject(new Error("未在 DH-BOX 宿主的 WebView2 中运行")); return; }
+      const id = "r" + (++seq);
+      pending.set(id, { resolve, reject });
+      wv.postMessage(JSON.stringify({ id, cmd, args: args || {} }));
+      // 防永久挂起：30 秒未收到后端响应则超时
+      setTimeout(() => {
+        if (pending.has(id)) { pending.delete(id); reject(new Error("桥接超时：命令 " + cmd + " 未收到后端响应")); }
+      }, 30000);
+    });
+  }
+  if (wv) {
+    wv.addEventListener("message", (e) => {
+      // C# 用 PostWebMessageAsJson 发送时 e.data 已是对象；字符串则解析（两种都兼容）
+      let msg = e.data;
+      if (typeof msg === "string") { try { msg = JSON.parse(msg); } catch { return; } }
+      if (!msg || typeof msg !== "object") return;
+      if (msg.id && pending.has(msg.id)) {
+        const p = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.ok) p.resolve(msg.data || {}); else p.reject(new Error(msg.error || "操作失败"));
+        return;
+      }
+      if (msg.event) handleHostEvent(msg);
+    });
+  }
+  return { post, host: !!wv };
+})();
+let winMaximized = false;
+let hostLogPath = "";   // C# 回传的真实日志文件路径（与程序同目录）
+function handleHostEvent(msg) {
+  if (msg.event === "autolock") doAutoLock();
+  if (msg.event === "windowState") {
+    winMaximized = !!(msg.data && msg.data.maximized);
+    document.querySelectorAll(".win-max").forEach((b) => {
+      b.classList.toggle("is-maximized", winMaximized);
+      b.title = winMaximized ? "还原" : "最大化";
+    });
+  }
+}
+// JS 运行时错误转发到 C# 日志（排障用）
+window.onerror = (m, src, line, col, err) => {
+  try { bridge.post("jsError", { message: String(m), src: String(src || ""), line: line || 0, col: col || 0, stack: err && err.stack ? String(err.stack) : "" }); } catch {}
+};
+window.addEventListener("unhandledrejection", (ev) => {
+  try {
+    const r = ev.reason;
+    bridge.post("jsError", { message: "Promise 拒绝：" + (r && r.message ? r.message : String(r)), src: "", line: 0, col: 0, stack: r && r.stack ? String(r.stack) : "" });
+  } catch {}
+});
+/* =====================================================================
+   DH-BOX · 文件加密保险库
+   说明：本文件为纯前端应用，数据保存在浏览器 localStorage。
+   密码使用 Base64 存储（生产环境应使用加盐哈希，如 Argon2）。
+   ===================================================================== */
+
+/* ---------- 工具 ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function b64Encode(s) { return btoa(unescape(encodeURIComponent(s))); }
+function b64Decode(s) { try { return decodeURIComponent(escape(atob(s))); } catch { return ""; } }
+
+const now = () => new Date();
+const pad = (n) => String(n).padStart(2, "0");
+function fmtDateTime(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function fmtDate(d)    { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function fmtClock(d)   { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function fmtSize(n) {
+  if (n === 0) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
+  return (n / 1073741824).toFixed(2) + " GB";
+}
+function fileIcon(f) {
+  if (f.type === "dir") return "📁";
+  const map = { pdf: "📕", txt: "📄", md: "📝", docx: "📘", xlsx: "📗", png: "🖼️", jpg: "🖼️", zip: "🗜️", exe: "⚙️", mp4: "🎞️", mp3: "🎵" };
+  return map[f.ext] || "🔒";
+}
+function ftype(f) {
+  if (f.type === "dir") return "文件夹";
+  const map = { pdf: "PDF 文档", txt: "文本文档", md: "Markdown", docx: "Word 文档", xlsx: "Excel 表格", png: "PNG 图片", jpg: "JPEG 图片", zip: "压缩包", exe: "应用程序", mp4: "视频", mp3: "音频" };
+  return map[f.ext] || "加密文件";
+}
+const INVALID_CHARS = /[\\/:*?"<>|]/;
+
+/* ---------- 列定义 ---------- */
+const COLUMN_DEFS = {
+  type:  { label: "类型",     cls: "col-type",  width: "110px", align: "left"  },
+  size:  { label: "大小",     cls: "col-size",  width: "100px", align: "right" },
+  mtime: { label: "修改时间", cls: "col-mtime", width: "150px", align: "right" },
+  ctime: { label: "创建时间", cls: "col-ctime", width: "150px", align: "right" },
+  enc:   { label: "加密状态", cls: "col-enc",   width: "100px", align: "center" },
+};
+const DEFAULT_COLUMNS = ["type", "size", "mtime"];
+
+/* ---------- 初始数据 ---------- */
+const DEFAULT_PASSWORD = b64Encode("123456");
+
+function seedData() {
+  const D = (name, children) => {
+    const c = ago(30), m = ago(2);
+    return { name, type: "dir", children, ctime: `${fmtDate(c)} ${fmtClock(c)}`, mtime: `${fmtDate(m)} ${fmtClock(m)}` };
+  };
+  const F = (name, ext, size, daysAgo, enc) => {
+    const d = now(); d.setDate(d.getDate() - daysAgo);
+    const c = ago(daysAgo + 5);
+    return { name, type: "file", ext, size, ctime: `${fmtDate(c)} ${fmtClock(c)}`, mtime: `${fmtDate(d)} ${fmtClock(d)}`, enc };
+  };
+  function ago(days) { const d = now(); d.setDate(d.getDate() - days); return d; }
+  return {
+    password: "",
+    passwordSet: false,
+    locked: false,
+    theme: "light",
+    columns: [...DEFAULT_COLUMNS],
+    clipboard: null,
+    cwd: [],
+    tree: D("", [
+      D("工作资料", [
+        F("项目方案.docx", "docx", 2539520, 2, true),
+        F("合同扫描件.pdf", "pdf", 8514462, 6, true),
+        F("预算表 2026.xlsx", "xlsx", 342016, 12, false),
+      ]),
+      D("个人照片", [
+        D("旅行", [
+          F("IMG_1024.png", "png", 5242880, 40, false),
+          F("IMG_1025.png", "png", 4980736, 40, false),
+          F("IMG_1030.jpg", "jpg", 3768320, 39, true),
+        ]),
+        F("全家福.jpg", "jpg", 6144000, 90, true),
+      ]),
+      D("私密保险柜", [
+        F("银行卡信息.txt", "txt", 1536, 15, true),
+        F("账号密码表.xlsx", "xlsx", 18432, 20, true),
+        F("遗嘱草稿.md", "md", 9216, 120, true),
+      ]),
+      F("日记 2026-09.md", "md", 24576, 1, true),
+      F("重要备忘.txt", "txt", 3072, 3, false),
+    ]),
+    settings: { lockMode: "duration", durationMinutes: 20, unlockUntil: null },
+    logs: seedLogs(),
+  };
+}
+
+function seedLogs() {
+  const rows = [];
+  const add = (minAgo, lv, msg) => {
+    const d = now(); d.setMinutes(d.getMinutes() - minAgo);
+    rows.push({ t: fmtDateTime(d), lv, msg });
+  };
+  add(0, "info", "用户打开设置 → 查看日志");
+  add(1, "info", "保险库解锁成功（密码验证通过）");
+  add(2, "info", "已挂载加密卷 Vault.dsv（AES-256 / GCM）");
+  add(5, "info", "自动锁定计时器已重置：自定义时长模式，20 分钟");
+  add(9, "ok",   "退出时安全擦除临时文件（34 项）");
+  add(15, "info", "修改文件：重要备忘.txt（写入 3.0 KB）");
+  add(22, "info", "创建文件夹：私密保险柜");
+  add(30, "warn", "检测到 3 次密码输入错误，已启用防暴力破解延迟（5 秒）");
+  add(42, "info", "备份完成：Vault.dsv.bak（大小 128.6 MB）");
+  add(60, "info", "保险库已锁定（手动锁定）");
+  add(75, "info", "保险库解锁成功（密码验证通过）");
+  add(90, "info", "已挂载加密卷 Vault.dsv（AES-256 / GCM）");
+  add(120, "ok",  "完整性校验通过：所有文件哈希一致");
+  add(180, "info", "导入文件：合同扫描件.pdf");
+  add(210, "warn", "磁盘剩余空间低于 20%，请及时清理或扩展保险库容量");
+  add(300, "info", "自动锁定触发（空闲超过 20 分钟）");
+  add(420, "error", "文件打开失败：IMG_1030.jpg（已损坏，已从索引中移除）");
+  add(600, "info", "版本更新：DH-BOX 2.4.1 → 2.4.2");
+  add(900, "info", "创建保险库：Vault.dsv（初始容量 1.0 GB）");
+  add(1440, "ok", "首日运行报告：未发现异常访问");
+  return rows;
+}
+
+/* ---------- 状态（由 C# 后端加密保存在保险库内，前端只持有内存副本） ---------- */
+let state = emptyState();
+let sessionUnlockStart = Date.now();   // 最后一次“界面活动”的时刻（空闲计时起点：解锁时重置，界面有操作就刷新）
+
+function emptyState() {
+  const d = now();
+  const stamp = `${fmtDate(d)} ${fmtClock(d)}`;
+  return {
+    passwordSet: false, locked: false, theme: "light",
+    columns: [...DEFAULT_COLUMNS], clipboard: null, cwd: [],
+    tree: { name: "", type: "dir", children: [], ctime: stamp, mtime: stamp },
+    settings: { lockMode: "duration", durationMinutes: 20, unlockUntil: null },
+    logs: [],
+  };
+}
+
+// 每次状态变化都交给 C# 后端加密写入保险库（替代原型里的 localStorage.setItem）
+// 保护：WebView2 对超大 postMessage 不可靠，状态过大时先裁剪旧日志，仍超限则跳过本次保存
+function persist() {
+  try {
+    while (state.logs.length > 200 && JSON.stringify(state).length > 800000) state.logs.splice(0, 200);
+    if (JSON.stringify(state).length > 900000) { bridge.post("jsError", { message: "持久化提示：状态数据过大，已跳过本次保存" }).catch(() => {}); return; }
+    bridge.post("saveState", { state: JSON.parse(JSON.stringify(state)) }).catch(() => {});
+  } catch (e) { }
+}
+
+function cwdPath() { return state.cwd.map((s) => s.name).join("/"); }
+
+// 解锁成功后：用后端返回的加密状态覆盖内存副本并整体重绘
+function applyStateFromHost(s) {
+  state = s || emptyState();
+  if (state.theme !== "dark" && state.theme !== "light") state.theme = "light";
+  state.columns = Array.isArray(state.columns) ? state.columns.filter((c) => c in COLUMN_DEFS) : [...DEFAULT_COLUMNS];
+  if (!state.columns.length) state.columns = [...DEFAULT_COLUMNS];
+  if (!state.settings) state.settings = { lockMode: "duration", durationMinutes: 20, unlockUntil: null };
+  if (!Array.isArray(state.logs)) state.logs = [];
+  if (!Array.isArray(state.cwd)) state.cwd = [];
+  state.clipboard = null;
+  state.passwordSet = true;
+  state.locked = false;
+  sessionUnlockStart = Date.now();
+  applyTheme(state.theme);
+  renderAll();
+  renderLogs();
+  renderLockUI();
+}
+
+/* ---------- 后端数据同步 ---------- */
+function insertFilesInto(cwdArr, entries) {
+  const dir = dirAt(cwdArr);
+  if (!dir) return 0;
+  let n = 0;
+  for (const f of entries) {
+    dir.children.push({ name: f.name, type: "file", ext: f.ext, size: f.size, ctime: f.ctime, mtime: f.mtime, enc: true });
+    n++;
+  }
+  return n;
+}
+
+async function doImportFiles() {
+  let r;
+  try { r = await bridge.post("importFiles", { cwd: cwdPath() }); }
+  catch (e) { toast("导入失败：" + e.message, "err"); return; }
+  if (!r.entries || !r.entries.length) return;
+  insertFilesInto(state.cwd.map((s) => s.name), r.entries);
+  addLog("info", `导入文件：${r.entries.map((x) => x.name).join("、")}（${dirLabel()}）`);
+  persist();
+  renderAll();
+  toast(`已导入 ${r.entries.length} 个文件（AES-256 加密入库）`, "ok");
+}
+
+async function doImportFolder() {
+  let r;
+  try { r = await bridge.post("importFolder", { cwd: cwdPath() }); }
+  catch (e) { toast("导入失败：" + e.message, "err"); return; }
+  if (!r.folder) return;
+  const dir = dirAt(state.cwd.map((s) => s.name));
+  if (!dir) return;
+  const d = now();
+  const stamp = `${fmtDate(d)} ${fmtClock(d)}`;
+  const root = { name: r.folder, type: "dir", children: [], ctime: r.ctime || stamp, mtime: r.mtime || stamp };
+  dir.children.push(root);
+  const place = (node, parts, en) => {
+    if (!parts.length) {
+      node.children.push({ name: en.name, type: "file", ext: en.ext, size: en.size, ctime: en.ctime, mtime: en.mtime, enc: true });
+      return;
+    }
+    const seg = parts.shift();
+    let next = node.children.find((c) => c.type === "dir" && c.name === seg);
+    if (!next) { next = { name: seg, type: "dir", children: [], ctime: stamp, mtime: stamp }; node.children.push(next); }
+    place(next, parts, en);
+  };
+  for (const en of (r.entries || [])) {
+    const parts = en.relPath.split("/");
+    const leaf = parts[parts.length - 1];
+    place(root, parts.slice(0, -1), { name: leaf, ext: en.ext, size: en.size, ctime: en.ctime, mtime: en.mtime });
+  }
+  addLog("info", `导入文件夹：${r.folder}（${r.count || 0} 个文件）（${dirLabel()}）`);
+  persist();
+  renderAll();
+  toast(`已导入文件夹「${r.folder}」（${r.count || 0} 个文件）`, "ok");
+}
+
+// “解密”菜单：把明文副本导出到本机（保险库内文件始终为 AES-256 密文）
+async function doDecrypt(item) {
+  try {
+    if (item.type === "dir") {
+      const r = await bridge.post("decryptFolder", { cwd: cwdPath(), name: item.name });
+      addLog("info", `解密导出：${item.name}（${r.count} 个文件）（${dirLabel()}）`);
+      toast(`「${item.name}」已解密导出（${r.count} 个文件）`, "ok");
+    } else {
+      await bridge.post("decryptFile", { cwd: cwdPath(), name: item.name });
+      addLog("info", `解密导出：${item.name}（${dirLabel()}）`);
+      toast(`「${item.name}」已解密导出`, "ok");
+    }
+  } catch (e) {
+    if (e && e.message === "已取消") return;
+    toast("解密导出失败：" + e.message, "err");
+  }
+}
+
+// 自动锁定：由前端计时（与原型一致），到点先保存状态再让后端清除密钥
+async function doAutoLock() {
+  if (state.locked || !state.passwordSet) return;
+  const s = state.settings || {};
+  addLog("info", s.lockMode === "until" ? "自动锁定：到达定点临时解锁截止时刻" : `自动锁定：空闲超过 ${s.durationMinutes || 20} 分钟`);
+  try { await bridge.post("lock", {}); } catch {}
+  state.locked = true;
+  showLockOverlay();
+  toast("保险库已自动锁定", "ok");
+}
+function walkTree(node, fn) {
+  for (const c of node.children) { fn(c); if (c.type === "dir") walkTree(c, fn); }
+}
+
+/* ---------- 主题 ---------- */
+function applyTheme(t) {
+  state.theme = t;
+  document.documentElement.dataset.theme = t;
+  $("btnTheme").textContent = t === "light" ? "🌙" : "☀️";
+  $("btnTheme").title = t === "light" ? "切换到深色主题" : "切换到浅色主题";
+  bridge.post("setTheme", { theme: t }).catch(() => {}); // 窗口标题栏跟随主题
+  persist();
+}
+$("btnTheme").onclick = () => applyTheme(state.theme === "light" ? "dark" : "light");
+
+/* ---------- 目录操作 ---------- */
+function dirAt(pathArr) {
+  let node = state.tree;
+  for (const name of pathArr) {
+    const next = node.children.find((c) => c.type === "dir" && c.name === name);
+    if (!next) return null;
+    node = next;
+  }
+  return node;
+}
+function dirLabel() {
+  const p = state.cwd.map((s) => s.name);
+  return "DH-BOX" + (p.length ? " / " + p.join(" / ") : " /");
+}
+function listItems() {
+  const d = dirAt(state.cwd.map((s) => s.name));
+  return d ? d.children : [];
+}
+function statDir(dir) {
+  let size = 0, files = 0;
+  const walk = (node) => {
+    for (const c of node.children) {
+      if (c.type === "dir") walk(c);
+      else { size += c.size; files++; }
+    }
+  };
+  walk(dir);
+  return { size, files };
+}
+function pathJoin(arr) { return arr.map((s) => (typeof s === "string" ? s : s.name)).join("/"); }
+
+/* ---------- 剪切板 ---------- */
+function clipboardEmpty() { return !state.clipboard || !state.clipboard.item; }
+function setClipboard(mode, item) {
+  state.clipboard = { mode, item, fromDir: state.cwd.map((s) => s.name) };
+  updateClipChip();
+  persist();
+}
+function clearClipboard() { state.clipboard = null; updateClipChip(); persist(); }
+function updateClipChip() {
+  const chip = $("clipChip");
+  if (clipboardEmpty()) { chip.classList.remove("show"); return; }
+  const c = state.clipboard;
+  chip.classList.add("show");
+  chip.textContent = `${c.mode === "copy" ? "📋 已复制" : "✂️ 已剪切"}：${c.item.name}`;
+}
+/* 目标目录是否位于某文件夹子树内（防剪切进自己） */
+function dirContains(folder, targetPathArr) {
+  let node = state.tree;
+  for (const name of targetPathArr) {
+    if (node === folder) return true;
+    const next = node.children.find((c) => c.type === "dir" && c.name === name);
+    if (!next) return false;
+    node = next;
+  }
+  return node === folder;
+}
+function uniqueName(base, list, isDir) {
+  const exists = (n) => list.some((c) => c.name === n && (isDir ? c.type === "dir" : c.type === "file"));
+  if (!exists(base)) return base;
+  const dot = base.lastIndexOf(".");
+  const stem = isDir ? base : (dot > 0 ? base.slice(0, dot) : base);
+  const ext = isDir ? "" : (dot > 0 ? base.slice(dot) : "");
+  const candidate = (k) => `${stem} - 副本${k === 1 ? "" : ` (${k})`}${ext}`;
+  let i = 1;
+  while (exists(candidate(i))) i++;
+  return candidate(i);
+}
+
+/* ---------- 渲染：目录树 / 面包屑 ---------- */
+function renderTree(node, container, depth, pathArr) {
+  for (const child of node.children) {
+    if (child.type !== "dir") continue;
+    const row = document.createElement("div");
+    row.className = "tree-item";
+    const cur = pathArr.length === depth && state.cwd.length === depth && state.cwd[depth-1]?.name === child.name;
+    if (cur) row.classList.add("current");
+    row.style.paddingLeft = (10 + depth * 14) + "px";
+    row.innerHTML = `<span class="tree-arrow">${child.children.some(c=>c.type==="dir") ? "▶" : ""}</span><span>📁</span><span>${esc(child.name)}</span>`;
+    row.onclick = () => { state.cwd = pathArr.concat([child.name]); selectedName = null; renderAll(); };
+    container.appendChild(row);
+    renderTree(child, container, depth + 1, pathArr.concat([child.name]));
+  }
+}
+
+function renderBreadcrumb() {
+  const bc = $("breadcrumb");
+  bc.innerHTML = "";
+  const root = document.createElement("span");
+  root.className = "crumb" + (state.cwd.length === 0 ? " current" : "");
+  root.textContent = "DH-BOX";
+  root.onclick = () => { state.cwd = []; selectedName = null; renderAll(); };
+  bc.appendChild(root);
+  state.cwd.forEach((seg, i) => {
+    const sep = document.createElement("span");
+    sep.className = "crumb-sep"; sep.textContent = "/";
+    bc.appendChild(sep);
+    const cr = document.createElement("span");
+    cr.className = "crumb" + (i === state.cwd.length - 1 ? " current" : "");
+    cr.textContent = seg.name;
+    const target = state.cwd.slice(0, i + 1).map((s) => s.name);
+    cr.onclick = () => { state.cwd = target; selectedName = null; renderAll(); };
+    bc.appendChild(cr);
+  });
+}
+
+/* ---------- 渲染：列设置 ---------- */
+function renderColsMenu() {
+  const menu = $("colsMenu");
+  const all = ["type", "size", "mtime", "ctime", "enc"];
+  menu.innerHTML = all.map((key) => {
+    const on = state.columns.includes(key);
+    return `<div class="cols-item" data-key="${key}">
+      <input type="checkbox" ${on ? "checked" : ""}><span>${COLUMN_DEFS[key].label}</span>
+    </div>`;
+  }).join("") + `<div class="cols-note">勾选 = 添加列；取消勾选 = 删除列（名称列固定）</div>`;
+  menu.querySelectorAll(".cols-item").forEach((el) => {
+    el.onclick = (e) => {
+      if (e.target.tagName === "INPUT") return;
+      const cb = el.querySelector("input");
+      cb.checked = !cb.checked;
+      toggleColumn(el.dataset.key);
+    };
+    el.querySelector("input").onchange = () => toggleColumn(el.dataset.key);
+  });
+}
+function toggleColumn(key) {
+  if (state.columns.includes(key)) state.columns = state.columns.filter((c) => c !== key);
+  else state.columns.push(key);
+  persist();
+  renderAll();
+  renderColsMenu();
+}
+
+/* ---------- 渲染：文件列表（动态列） ---------- */
+let selectedName = null;
+
+function gridTemplate() {
+  const cols = state.columns.map((c) => COLUMN_DEFS[c].width);
+  return `34px minmax(140px, 1fr) ${cols.join(" ")}`;
+}
+
+function renderFileHead() {
+  const head = $("fileHead");
+  head.style.gridTemplateColumns = gridTemplate();
+  let html = `<span></span><span>名称</span>`;
+  for (const key of state.columns) {
+    const d = COLUMN_DEFS[key];
+    html += `<span class="${d.cls}">${d.label}</span>`;
+  }
+  head.innerHTML = html;
+}
+
+function cellHtml(key, f) {
+  switch (key) {
+    case "type":  return `<span class="file-meta col-type">${ftype(f)}</span>`;
+    case "size":  return `<span class="file-meta col-size">${f.type === "dir" ? "—" : fmtSize(f.size)}</span>`;
+    case "mtime": return `<span class="file-meta col-mtime">${f.mtime}</span>`;
+    case "ctime": return `<span class="file-meta col-ctime">${f.ctime}</span>`;
+    case "enc":   return `<span class="col-enc ${f.enc ? "enc-yes" : "enc-no"}">${f.enc ? "🔒 已加密" : "未加密"}</span>`;
+    default: return "";
+  }
+}
+
+function renderFiles() {
+  const items = listItems().slice().sort((a, b) =>
+    a.type === b.type ? a.name.localeCompare(b.name, "zh") : (a.type === "dir" ? -1 : 1));
+  const list = $("fileList");
+  list.innerHTML = "";
+  renderFileHead();
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="big">🗂️</div>此文件夹为空<br><span style="font-size:12px">点击上方「新建文件夹」或在此处右键开始整理</span></div>`;
+    $("statItems").textContent = "0 个项目";
+    $("statSize").textContent = "";
+    return;
+  }
+  for (const f of items) {
+    const row = document.createElement("div");
+    row.className = "file-row" + (f.name === selectedName ? " selected" : "");
+    row.style.gridTemplateColumns = gridTemplate();
+    row.innerHTML = `
+      <span class="file-icon">${fileIcon(f)}</span>
+      <span class="file-name"><span>${esc(f.name)}</span>${f.enc ? '<span class="lock-badge">已加密</span>' : '<span class="plain-badge">未加密</span>'}</span>
+      ${state.columns.map((k) => cellHtml(k, f)).join("")}`;
+    row.onclick = () => { selectedName = f.name; renderFiles(); };
+    row.ondblclick = () => openItem(f);
+    row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); selectedName = f.name; renderFiles(); showCtxMenu(e, f); };
+    list.appendChild(row);
+  }
+  const st = statDir(dirAt(state.cwd.map((s) => s.name)));
+  $("statItems").textContent = `${items.length} 个项目（含 ${items.filter(f=>f.type==="dir").length} 个文件夹）`;
+  $("statSize").textContent = st.files ? `占用空间 ${fmtSize(st.size)}` : "";
+  updateClipChip();
+}
+
+function openItem(f) {
+  if (f.type === "dir") {
+    state.cwd.push({ name: f.name });
+    selectedName = null;
+    renderAll();
+  } else {
+    toast(`已打开文件「${f.name}」`, "ok");
+    addLog("info", `打开文件：${f.name}（${dirLabel()}）`);
+    bridge.post("openFile", { cwd: cwdPath(), name: f.name })
+      .catch((e) => { toast("打开失败：" + e.message, "err"); addLog("error", `打开文件失败：${f.name}（${e.message}）`); });
+  }
+}
+
+function renderAll() {
+  renderBreadcrumb();
+  const treeRoot = $("treeRoot");
+  treeRoot.innerHTML = "";
+  const rootRow = document.createElement("div");
+  rootRow.className = "tree-item" + (state.cwd.length === 0 ? " current" : "");
+  rootRow.style.paddingLeft = "10px";
+  rootRow.innerHTML = `<span>🗄️</span><span>我的密库（根目录）</span>`;
+  rootRow.onclick = () => { state.cwd = []; selectedName = null; renderAll(); };
+  treeRoot.appendChild(rootRow);
+  renderTree(state.tree, treeRoot, 1, []);
+  renderFiles();
+  $("btnUp").disabled = state.cwd.length === 0;
+}
+
+/* ---------- 右键菜单 ---------- */
+let ctxTarget = null; // { kind: "item", item } | { kind: "panel" }
+
+function showCtxMenu(e, item) {
+  ctxTarget = item ? { kind: "item", item } : { kind: "panel" };
+  const menu = $("ctxMenu");
+  const isItem = ctxTarget.kind === "item";
+  const f = isItem ? ctxTarget.item : null;
+  const entries = [];
+
+  if (isItem) {
+    if (f.type === "dir") entries.push({ ico: "📂", label: "打开", act: "open" });
+    else entries.push({ ico: "🔍", label: "打开 / 预览", act: "open" });
+    entries.push({ sep: true });
+    entries.push({ ico: "📋", label: "复制", act: "copy" });
+    entries.push({ ico: "✂️", label: "剪切", act: "cut" });
+    entries.push({ ico: "📥", label: "粘贴", act: "paste", disabled: clipboardEmpty() || f.type !== "dir" });
+    entries.push({ sep: true });
+    entries.push({ ico: "✏️", label: "重命名", act: "rename" });
+    entries.push({ ico: f.enc ? "🔓" : "🔒", label: f.enc ? "解密" : "加密", act: "encrypt" });
+    entries.push({ sep: true });
+    entries.push({ ico: "🗑️", label: "删除", act: "delete", danger: true });
+    entries.push({ sep: true });
+    entries.push({ ico: "ℹ️", label: "属性", act: "props" });
+  } else {
+    entries.push({ ico: "📁", label: "新建文件夹", act: "newFolder" });
+    entries.push({ ico: "📤", label: "导入文件…", act: "importFiles" });
+    entries.push({ ico: "📂", label: "导入文件夹…", act: "importFolder" });
+    entries.push({ ico: "📥", label: "粘贴", act: "paste", disabled: clipboardEmpty() });
+    entries.push({ sep: true });
+    entries.push({ ico: "🔄", label: "刷新", act: "refresh" });
+    entries.push({ sep: true });
+    entries.push({ ico: "ℹ️", label: "保险库属性", act: "vaultProps" });
+  }
+
+  menu.innerHTML = entries.map((en) => {
+    if (en.sep) return `<div class="ctx-sep"></div>`;
+    return `<div class="ctx-item${en.disabled ? " disabled" : ""}${en.danger ? " danger" : ""}" data-act="${en.act}">
+      <span class="ctx-ico">${en.ico}</span><span>${esc(en.label)}</span>
+    </div>`;
+  }).join("");
+
+  menu.querySelectorAll(".ctx-item").forEach((el) => {
+    el.onclick = () => {
+      if (el.classList.contains("disabled")) return;
+      hideCtxMenu();
+      runCtxAction(el.dataset.act);
+    };
+  });
+
+  menu.classList.add("visible");
+  const rect = menu.getBoundingClientRect();
+  let x = e.clientX, y = e.clientY;
+  if (x + rect.width > innerWidth - 8) x = innerWidth - rect.width - 8;
+  if (y + rect.height > innerHeight - 8) y = innerHeight - rect.height - 8;
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+}
+function hideCtxMenu() { $("ctxMenu").classList.remove("visible"); }
+
+function runCtxAction(act) {
+  const target = ctxTarget;
+  const item = target && target.kind === "item" ? target.item : null;
+  switch (act) {
+    case "open": openItem(item); break;
+    case "copy": setClipboard("copy", item); toast(`已复制「${item.name}」`, "ok"); break;
+    case "cut":  setClipboard("cut", item);  toast(`已剪切「${item.name}」，请到目标文件夹粘贴`, "ok"); break;
+    case "paste": doPaste(item); break;
+    case "rename": openRename(item); break;
+    case "encrypt": doDecrypt(item); break;
+    case "delete": openDelete(item); break;
+    case "props": showProps(item); break;
+    case "newFolder": $("btnNewFolder").click(); break;
+    case "importFiles": doImportFiles(); break;
+    case "importFolder": doImportFolder(); break;
+    case "refresh": renderAll(); toast("已刷新", "ok"); break;
+    case "vaultProps": {
+      const st = statDir(state.tree);
+      showProps({ name: "我的密库（根目录）", type: "dir", enc: true, ctime: state.tree.ctime, mtime: state.tree.mtime, children: state.tree.children, isVault: true }, st);
+      break;
+    }
+  }
+}
+
+/* ---------- 右键动作实现 ---------- */
+async function doPaste(targetDir) {
+  if (clipboardEmpty()) { toast("剪贴板为空", "err"); return; }
+  const c = state.clipboard;
+  const srcDir = dirAt(c.fromDir);
+  if (!srcDir) { clearClipboard(); toast("原位置已不存在", "err"); return; }
+  const curDir = dirAt(state.cwd.map((s) => s.name));
+  const dest = targetDir || curDir;
+  if (!dest) { toast("目标目录不存在", "err"); return; }
+  // 目标路径（相对根）：当前路径 + （粘贴到子文件夹时追加其名）
+  const destPath = state.cwd.map((s) => s.name).concat(dest === curDir ? [] : [dest.name]);
+  const toPath = destPath.join("/");
+  if (c.mode === "cut") {
+    // 剪切：目录防套娃（不能移入自身或自身子目录）
+    if (c.item.type === "dir" && dirContains(c.item, destPath)) {
+      toast("不能把文件夹移动到它自身或其子文件夹中", "err");
+      return;
+    }
+    const idx = srcDir.children.indexOf(c.item);
+    if (idx < 0) { clearClipboard(); toast("项目已被移除", "err"); return; }
+    if (srcDir === dest) { clearClipboard(); return; } // 原位置粘贴 = 无操作
+    let finalName = c.item.name;
+    try {
+      const r = await bridge.post("move", { fromCwd: (c.fromDir || []).join("/"), name: c.item.name, toCwd: toPath });
+      if (r && r.name) finalName = r.name;
+    } catch (e) { toast("移动失败：" + e.message, "err"); return; }
+    srcDir.children.splice(idx, 1);
+    c.item.name = finalName;
+    dest.children.push(c.item);
+    addLog("info", `移动：${finalName} → ${destPath.length ? pathJoin(destPath) : "根目录"}`);
+    clearClipboard();
+    toast(`已移动「${finalName}」`, "ok");
+  } else {
+    let finalName = null;
+    try {
+      const r = await bridge.post("copy", { fromCwd: (c.fromDir || []).join("/"), name: c.item.name, toCwd: toPath });
+      if (r && r.name) finalName = r.name;
+    } catch (e) { toast("粘贴失败：" + e.message, "err"); return; }
+    const clone = JSON.parse(JSON.stringify(c.item));
+    clone.name = finalName || uniqueName(clone.name, dest.children, clone.type === "dir");
+    dest.children.push(clone);
+    addLog("info", `复制：${clone.name} → ${destPath.length ? pathJoin(destPath) : "根目录"}`);
+    toast(`已粘贴「${clone.name}」`, "ok");
+  }
+  persist();
+  renderAll();
+}
+
+function openRename(item) {
+  ctxTarget = { kind: "item", item };
+  $("renameInput").value = item.name;
+  $("renameErr").textContent = "";
+  $("renameModal").classList.add("visible");
+  $("renameInput").focus();
+  $("renameInput").select();
+}
+$("btnRenameCancel").onclick = () => $("renameModal").classList.remove("visible");
+$("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnRenameConfirm").click(); });
+$("btnRenameConfirm").onclick = async () => {
+  const item = ctxTarget && ctxTarget.kind === "item" ? ctxTarget.item : null;
+  if (!item) return;
+  const name = $("renameInput").value.trim();
+  const err = $("renameErr");
+  err.textContent = "";
+  if (!name) { err.textContent = "名称不能为空"; return; }
+  if (INVALID_CHARS.test(name)) { err.textContent = "名称不能包含 \\ / : * ? \" < > | 字符"; return; }
+  if (name === item.name) { $("renameModal").classList.remove("visible"); return; }
+  const siblings = listItems().filter((c) => c !== item);
+  if (siblings.some((c) => c.name === name && c.type === item.type)) { err.textContent = "已存在同名项目"; return; }
+  const oldName = item.name;
+  try { await bridge.post("rename", { cwd: cwdPath(), name: oldName, newName: name }); }
+  catch (e) { err.textContent = "重命名失败：" + e.message; return; }
+  item.name = name;
+  addLog("info", `重命名：${oldName} → ${name}（${dirLabel()}）`);
+  persist();
+  $("renameModal").classList.remove("visible");
+  selectedName = name;
+  renderAll();
+  toast(`已重命名为「${name}」`, "ok");
+};
+
+// 原型里的 encrypt/decrypt 切换已由真实“解密导出”（doDecrypt）取代：
+// 保险库内所有文件始终以 AES-256 加密存储，不存在“未加密条目”。
+
+function openDelete(item) {
+  ctxTarget = { kind: "item", item };
+  $("deleteMsg").innerHTML = item.type === "dir"
+    ? `确定删除文件夹 <b>${esc(item.name)}</b> 及其中的全部内容吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`
+    : `确定删除文件 <b>${esc(item.name)}</b> 吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`;
+  $("deleteModal").classList.add("visible");
+}
+$("btnDeleteCancel").onclick = () => $("deleteModal").classList.remove("visible");
+$("btnDeleteConfirm").onclick = async () => {
+  const item = ctxTarget && ctxTarget.kind === "item" ? ctxTarget.item : null;
+  if (!item) return;
+  try { await bridge.post("delete", { cwd: cwdPath(), name: item.name }); }
+  catch (e) { toast("删除失败：" + e.message, "err"); return; }
+  const dir = dirAt(state.cwd.map((s) => s.name));
+  const idx = dir.children.indexOf(item);
+  if (idx >= 0) dir.children.splice(idx, 1);
+  addLog("warn", `删除：${item.name}（${dirLabel()}）`);
+  if (state.clipboard && state.clipboard.item === item) clearClipboard();
+  persist();
+  $("deleteModal").classList.remove("visible");
+  if (selectedName === item.name) selectedName = null;
+  renderAll();
+  toast(`已删除「${item.name}」`, "ok");
+};
+
+function showProps(item, overrideStat) {
+  const isDir = item.type === "dir";
+  const st = overrideStat || statDir(item);
+  const rows = [
+    ["名称", esc(item.name)],
+    ["类型", ftype(item)],
+    ["位置", dirLabel()],
+  ];
+  if (isDir) {
+    rows.push(["包含", `${item.children.length} 个项目`]);
+    rows.push(["占用空间", fmtSize(st.size)]);
+  } else {
+    rows.push(["大小", fmtSize(item.size) + `（${item.size} 字节）`]);
+    rows.push(["格式", (item.ext || "—").toUpperCase()]);
+  }
+  rows.push(["加密状态", item.enc ? "🔒 已加密（AES-256）" : "未加密"]);
+  rows.push(["创建时间", item.ctime]);
+  rows.push(["修改时间", item.mtime]);
+  $("propsTable").innerHTML = rows.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+  $("propsModal").classList.add("visible");
+}
+$("btnPropsClose").onclick = () => $("propsModal").classList.remove("visible");
+
+/* ---------- 主界面按钮事件 ---------- */
+$("btnUp").onclick = () => { state.cwd.pop(); selectedName = null; renderAll(); };
+$("btnPaste").onclick = () => doPaste(null);
+$("btnNewFolder").onclick = () => { $("newFolderName").value = ""; $("newFolderErr").textContent = ""; $("newFolderModal").classList.add("visible"); $("newFolderName").focus(); };
+$("btnNewCancel").onclick = () => $("newFolderModal").classList.remove("visible");
+$("newFolderName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnNewConfirm").click(); });
+$("btnNewConfirm").onclick = () => {
+  const name = $("newFolderName").value.trim();
+  const err = $("newFolderErr");
+  err.textContent = "";
+  if (!name) { err.textContent = "请输入文件夹名称"; return; }
+  if (INVALID_CHARS.test(name)) { err.textContent = "名称不能包含 \\ / : * ? \" < > | 字符"; return; }
+  if (listItems().some((c) => c.type === "dir" && c.name === name)) { err.textContent = "已存在同名文件夹"; return; }
+  listItems().push({ name, type: "dir", children: [], ctime: fmtDateTime(now()), mtime: fmtDateTime(now()) });
+  addLog("info", `创建文件夹：${name}（${dirLabel()}）`);
+  persist();
+  $("newFolderModal").classList.remove("visible");
+  renderAll();
+  toast(`已创建文件夹「${name}」`, "ok");
+};
+
+/* 列设置按钮 */
+const btnCols = $("btnCols");
+btnCols.onclick = (e) => {
+  e.stopPropagation();
+  const menu = $("colsMenu");
+  renderColsMenu();
+  const rect = btnCols.getBoundingClientRect();
+  menu.style.left = rect.left + "px";
+  menu.style.top = (rect.bottom + 6) + "px";
+  menu.classList.toggle("visible");
+};
+document.addEventListener("click", (e) => {
+  if (!$("colsMenu").contains(e.target)) $("colsMenu").classList.remove("visible");
+});
+
+/* 空白区域右键 */
+$("fileList").addEventListener("contextmenu", (e) => {
+  if (e.target.closest(".file-row")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  showCtxMenu(e, null);
+});
+
+/* 全局关闭右键菜单 */
+document.addEventListener("click", (e) => {
+  if (!$("ctxMenu").contains(e.target)) hideCtxMenu();
+});
+document.addEventListener("contextmenu", (e) => {
+  if (e.target.closest("#ctxMenu")) return;       // 菜单自身右键
+  if (e.target.closest("#fileList")) return;      // 文件区由行/空白处理
+  e.preventDefault();
+  hideCtxMenu();
+});
+window.addEventListener("blur", hideCtxMenu);
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtxMenu(); });
+
+/* ---------- 日志 ---------- */
+function addLog(lv, msg) {
+  state.logs.push({ t: fmtDateTime(now()), lv, msg });
+  persist();
+  renderLogs();
+}
+function renderLogs() {
+  const view = $("logView");
+  if (!view) return;
+  const lp = $("logPathLine");
+  if (lp) lp.textContent = "日志文件路径：" + (hostLogPath || "程序目录\\vault.log（与 DH-BOX.exe 同目录）");
+  if (state.logs.length === 0) {
+    view.innerHTML = `<div style="color:var(--log-time);text-align:center;padding-top:180px">暂无日志记录</div>`;
+    $("logCount").textContent = "0 条";
+    return;
+  }
+  view.innerHTML = state.logs.map((l) =>
+    `<div class="log-line"><span class="log-time">[${esc(l.t)}]</span> <span class="log-lv ${l.lv}">[${l.lv.toUpperCase().padEnd(5)}]</span> ${esc(l.msg)}</div>`
+  ).join("");
+  view.scrollTop = view.scrollHeight;
+  $("logCount").textContent = `${state.logs.length} 条`;
+}
+$("btnRefreshLog").onclick = () => { addLog("info", "用户刷新了日志视图"); toast("日志已刷新", "ok"); };
+$("btnClearLog").onclick = () => $("clearLogModal").classList.add("visible");
+$("btnClearCancel").onclick = () => $("clearLogModal").classList.remove("visible");
+$("btnClearConfirm").onclick = () => {
+  state.logs = [];
+  persist();
+  $("clearLogModal").classList.remove("visible");
+  renderLogs();
+  toast("日志已清空", "ok");
+};
+
+/* ---------- 修改密码 ---------- */
+function pwStrengthLevel(pw) {
+  let score = 0;
+  if (pw.length >= 6) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  if (pw.length >= 10) score++;
+  return Math.min(score, 4);
+}
+function refreshStrength() {
+  const pw = $("pwNew").value;
+  const level = pw ? pwStrengthLevel(pw) : 0;
+  $("pwStrength").dataset.level = level;
+  const labels = ["请输入新密码", "弱 — 建议加强", "一般", "良好", "强"];
+  $("pwStrengthLabel").textContent = pw ? labels[level] : "请输入新密码";
+}
+$("pwNew").addEventListener("input", refreshStrength);
+
+$("btnChangePw").onclick = async () => {
+  const old = $("pwOld").value, nw = $("pwNew").value, cf = $("pwConfirm").value;
+  const err = $("pwErr");
+  err.textContent = "";
+  if (!old) { err.textContent = "旧密码不正确"; return; }
+  if (nw.length < 6) { err.textContent = "新密码至少 6 位"; return; }
+  if (nw !== cf) { err.textContent = "两次输入的新密码不一致"; return; }
+  if (nw === old) { err.textContent = "新密码不能与旧密码相同"; return; }
+  try { await bridge.post("changePassword", { oldPassword: old, newPassword: nw }); }
+  catch (e) { err.textContent = e.message; return; }
+  addLog("ok", "主密码修改成功");
+  $("pwOld").value = $("pwNew").value = $("pwConfirm").value = "";
+  refreshStrength();
+  toast("密码修改成功", "ok");
+};
+
+/* ---------- 锁定 / 解锁 ---------- */
+function updateStatusPill() {
+  const pill = $("statusPill");
+  const txt = $("statusText");
+  if (state.locked) {
+    pill.classList.add("locked");
+    txt.textContent = "保险库已锁定";
+  } else {
+    pill.classList.remove("locked");
+    txt.textContent = "保险库已解锁";
+  }
+}
+function showLockOverlay() {
+  $("unlockPass").value = "";
+  $("unlockErr").textContent = "";
+  $("lockOverlay").classList.add("visible");
+  updateStatusPill();
+  setTimeout(() => $("unlockPass").focus(), 30);
+}
+function hideLockOverlay() {
+  $("lockOverlay").classList.remove("visible");
+  updateStatusPill();
+}
+$("btnLock").onclick = async () => {
+  if (!state.passwordSet) { toast("尚未设置主密码，无法锁定", "err"); return; }
+  addLog("info", "保险库已锁定（手动锁定）");
+  try { await bridge.post("saveState", { state: JSON.parse(JSON.stringify(state)) }); } catch {}
+  try { await bridge.post("lock", {}); } catch {}
+  state.locked = true;
+  showLockOverlay();
+  toast("保险库已锁定", "ok");
+};
+$("btnUnlock").onclick = async () => {
+  const pass = $("unlockPass").value;
+  const err = $("unlockErr");
+  err.textContent = "";
+  if (!pass) { err.textContent = "请输入主密码"; return; }
+  let data;
+  try { data = await bridge.post("unlock", { password: pass }); }
+  catch (e) { err.textContent = e.message; return; }
+  applyStateFromHost(data.state);
+  $("unlockPass").value = "";   // 敏感：解锁成功后立即清空输入框
+  addLog("ok", "保险库解锁成功（密码验证通过）");
+  persist();
+  hideLockOverlay();
+  toast("已解锁", "ok");
+};
+$("unlockPass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnUnlock").click(); });
+
+/* ---------- 首次设置密码 ---------- */
+function refreshSetupStrength() {
+  const pw = $("setupPass").value;
+  const level = pw ? pwStrengthLevel(pw) : 0;
+  $("setupStrength").dataset.level = level;
+  const labels = ["请输入主密码", "弱 — 建议加强", "一般", "良好", "强"];
+  $("setupStrengthLabel").textContent = pw ? labels[level] : "请输入主密码";
+}
+$("setupPass").addEventListener("input", refreshSetupStrength);
+$("setupPassConfirm").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnSetupConfirm").click(); });
+$("btnSetupConfirm").onclick = async () => {
+  const pass = $("setupPass").value, cf = $("setupPassConfirm").value;
+  const err = $("setupErr");
+  err.textContent = "";
+  if (pass.length < 6) { err.textContent = "主密码至少 6 位"; return; }
+  if (pass !== cf) { err.textContent = "两次输入的密码不一致"; return; }
+  try { await bridge.post("setup", { password: pass }); }
+  catch (e) { err.textContent = e.message; return; }
+  state.passwordSet = true;
+  state.locked = false;
+  sessionUnlockStart = Date.now();
+  $("setupPass").value = "";         // 敏感：设置成功后立即清空输入框
+  $("setupPassConfirm").value = "";
+  addLog("ok", "主密码设置完成（保险库已按 AES-256 加密创建）");
+  persist();
+  $("setupModal").classList.remove("visible");
+  toast("主密码设置成功", "ok");
+};
+
+/* ---------- 自动锁定 ---------- */
+function toLocalInput(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtDeadline(d) {
+  return `${d.getFullYear()} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日 ${fmtClock(d)}`;
+}
+function renderLockUI() {
+  const m = state.settings.lockMode;
+  $("modeDuration").classList.toggle("active", m === "duration");
+  $("modeUntil").classList.toggle("active", m === "until");
+  $("durationInput").value = state.settings.durationMinutes;
+  $("untilInput").min = toLocalInput(now());
+  if (m === "until") {
+    const base = state.settings.unlockUntil ? new Date(state.settings.unlockUntil) : (() => { const d = now(); d.setHours(d.getHours() + 2); return d; })();
+    $("untilInput").value = toLocalInput(base);
+  }
+  updateDeadlineNote();
+}
+function updateDeadlineNote() {
+  const note = $("deadlineNote");
+  if (state.settings.lockMode === "duration") {
+    note.innerHTML = `当前策略：<b>自定义时长模式</b> —— 空闲超过 <b>${esc(state.settings.durationMinutes)} 分钟</b> 后自动锁定。`;
+  } else {
+    const d = state.settings.unlockUntil ? new Date(state.settings.unlockUntil) : null;
+    if (d) {
+      const diff = d - now();
+      const left = diff > 0
+        ? `${Math.floor(diff/3600000)} 小时 ${Math.max(0, Math.floor(diff/60000)%60)} 分钟`
+        : "已到期";
+      note.innerHTML = `当前策略：<b>定点临时解锁模式</b> —— 临时解锁截止时刻为 <b>${fmtDeadline(d)}</b>（剩余 ${esc(left)}），到点自动锁定。`;
+    } else {
+      note.innerHTML = `当前策略：<b>定点临时解锁模式</b> —— 请选择截止时刻后点击「保存设置」。`;
+    }
+  }
+}
+$("modeDuration").onclick = () => { state.settings.lockMode = "duration"; renderLockUI(); };
+$("modeUntil").onclick = () => { state.settings.lockMode = "until"; renderLockUI(); };
+function clampDuration(v) { v = Math.round(Number(v)); if (!Number.isFinite(v)) v = 20; return Math.min(1440, Math.max(1, v)); }
+$("btnMinus").onclick = () => { state.settings.durationMinutes = clampDuration(($("durationInput").value || 20) - 1); renderLockUI(); };
+$("btnPlus").onclick = () => { state.settings.durationMinutes = clampDuration(($("durationInput").value || 20) + 1); renderLockUI(); };
+$("durationInput").addEventListener("change", () => { state.settings.durationMinutes = clampDuration($("durationInput").value); renderLockUI(); });
+$("untilInput").addEventListener("change", updateDeadlineNote);
+
+$("btnSaveLock").onclick = () => {
+  const m = state.settings.lockMode;
+  if (m === "duration") {
+    const v = clampDuration($("durationInput").value);
+    state.settings.durationMinutes = v;
+    addLog("info", `自动锁定设置已更改：自定义时长模式，${v} 分钟`);
+    toast(`已保存：空闲 ${v} 分钟自动锁定`, "ok");
+  } else {
+    const d = fromLocalInput($("untilInput").value);
+    if (!d || d <= now()) { toast("请选择一个未来的截止时刻", "err"); return; }
+    state.settings.unlockUntil = d.getTime();
+    addLog("info", `自动锁定设置已更改：定点临时解锁至 ${fmtDeadline(d)}`);
+    toast(`已保存：临时解锁至 ${fmtDeadline(d)}`, "ok");
+  }
+  persist();
+  renderLockUI();
+};
+// 空闲检测：界面内有任何操作（鼠标移动/点击/滚轮/键盘/输入/拖拽）都刷新计时起点；
+// 界面完全无操作达到设定时长才自动锁定（与设置页“空闲超过”文案一致）
+["mousemove", "mousedown", "mouseup", "wheel", "keydown", "keyup", "input", "pointerdown"].forEach((ev) => {
+  document.addEventListener(ev, () => { sessionUnlockStart = Date.now(); }, { passive: true, capture: true });
+});
+
+setInterval(() => {
+  if (state.settings.lockMode === "until") updateDeadlineNote();
+  if (state.locked || !state.passwordSet) return;
+  const s = state.settings;
+  if (s.lockMode === "duration" && s.durationMinutes) {
+    if (Date.now() - sessionUnlockStart >= s.durationMinutes * 60000) doAutoLock();
+  } else if (s.lockMode === "until" && s.unlockUntil) {
+    if (Date.now() >= s.unlockUntil) doAutoLock();
+  }
+}, 1000);
+
+/* ---------- 页面切换 ---------- */
+function showView(view) {
+  $("viewMain").style.display = view === "main" ? "" : "none";
+  $("viewSettings").classList.toggle("visible", view === "settings");
+  $("sidebar").style.display = view === "main" ? "" : "none";
+  $("btnMain").classList.toggle("active", view === "main");
+  $("btnSettings").classList.toggle("active", view === "settings");
+}
+$("btnMain").onclick = () => showView("main");
+$("btnSettings").onclick = () => showView("settings");
+$("btnBackMain").onclick = () => showView("main");
+document.querySelectorAll(".nav-item").forEach((el) => {
+  el.onclick = () => {
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    el.classList.add("active");
+    document.querySelectorAll(".settings-tab").forEach((t) => t.classList.remove("visible"));
+    $("tab-" + el.dataset.tab).classList.add("visible");
+    if (el.dataset.tab === "logs") renderLogs();
+    if (el.dataset.tab === "autolock") renderLockUI();
+  };
+});
+
+/* ---------- 窗口控制（无边框窗口：顶栏拖动 / 边缘缩放 / 窗口按钮） ---------- */
+function winInteractive(el) { return !!(el && el.closest("button, input, textarea, select, a, .status-pill, .ctx-item, .win-btns")); }
+
+let dragOrigin = null;
+const topbarEl = document.querySelector(".topbar");
+topbarEl.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || winInteractive(e.target)) return;
+  if (edgeAtPoint(e.clientX, e.clientY)) return;   // 边缘区域交给“缩放”，不做窗口拖动
+  dragOrigin = { x: e.screenX, y: e.screenY };
+});
+document.addEventListener("mousemove", (e) => {
+  if (dragOrigin && Math.abs(e.screenX - dragOrigin.x) + Math.abs(e.screenY - dragOrigin.y) > 4) {
+    dragOrigin = null;
+    bridge.post("windowDrag", {}).catch(() => {});
+  }
+});
+document.addEventListener("mouseup", () => { dragOrigin = null; });
+topbarEl.addEventListener("dblclick", (e) => {
+  if (winInteractive(e.target)) return;
+  bridge.post("windowAction", { action: "maximizeToggle" }).catch(() => {});
+});
+
+const RESIZE_EDGE = 12;   // 边缘抓取区（越大越好抓；顶部 12px 内按下即调整高度）
+function edgeAtPoint(x, y) {
+  if (winMaximized) return "";
+  let ed = "";
+  if (y < RESIZE_EDGE) ed += "top"; else if (y > innerHeight - RESIZE_EDGE) ed += "bottom";
+  if (x < RESIZE_EDGE) ed += "left"; else if (x > innerWidth - RESIZE_EDGE) ed += "right";
+  return ed;
+}
+const CURSORS = { top: "ns-resize", bottom: "ns-resize", left: "ew-resize", right: "ew-resize",
+  topleft: "nwse-resize", bottomright: "nwse-resize", topright: "nesw-resize", bottomleft: "nesw-resize" };
+document.addEventListener("mousemove", (e) => {
+  const ed = edgeAtPoint(e.clientX, e.clientY);
+  document.documentElement.style.cursor = CURSORS[ed] || "";
+  // 顶部抓取区提示条：让用户知道“把鼠标放到最顶端可以拖高/拖矮”
+  const hint = $("resizeHint");
+  if (hint) hint.classList.toggle("visible", ed.indexOf("top") === 0);
+});
+document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  const ed = edgeAtPoint(e.clientX, e.clientY);
+  if (!ed) return;
+  e.preventDefault();
+  bridge.post("windowResize", { edge: ed }).catch(() => {});
+});
+document.querySelectorAll(".win-min").forEach((b) => { b.onclick = () => bridge.post("windowAction", { action: "minimize" }).catch(() => {}); });
+document.querySelectorAll(".win-max").forEach((b) => { b.onclick = () => bridge.post("windowAction", { action: "maximizeToggle" }).catch(() => {}); });
+document.querySelectorAll(".win-close").forEach((b) => { b.onclick = () => bridge.post("windowAction", { action: "close" }).catch(() => {}); });
+
+// 锁定覆盖层是全屏的（盖住顶栏）：长按"顶部"同样可以拖动窗口，顶部双击 = 最大化/还原
+const lockOverlayEl = document.getElementById("lockOverlay");
+lockOverlayEl.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || winInteractive(e.target)) return;
+  if (e.target.closest(".lock-box")) return;
+  if (e.clientY > 60) return;                 // 仅顶部区域可拖动
+  if (edgeAtPoint(e.clientX, e.clientY)) return;   // 边缘区域交给“缩放”，不做窗口拖动
+  dragOrigin = { x: e.screenX, y: e.screenY };
+});
+lockOverlayEl.addEventListener("dblclick", (e) => {
+  if (winInteractive(e.target) || e.target.closest(".lock-box")) return;
+  if (e.clientY > 60) return;
+  bridge.post("windowAction", { action: "maximizeToggle" }).catch(() => {});
+});
+
+/* ---------- 弹窗遮罩点击关闭 ---------- */
+["newFolderModal", "renameModal", "deleteModal", "propsModal", "clearLogModal"].forEach((id) => {
+  $(id).addEventListener("mousedown", (e) => { if (e.target === $(id)) $(id).classList.remove("visible"); });
+});
+
+/* ---------- Toast ---------- */
+let toastTimer = null;
+function toast(msg, kind) {
+  const t = $("toast");
+  t.textContent = (kind === "ok" ? "✅ " : kind === "err" ? "⚠️ " : "") + msg;
+  t.className = "toast show " + (kind || "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+/* ---------- 启动 ---------- */
+// 设计稿截图模式：通过 URL 参数精确控制初始界面（仅用于界面核对）
+const shotParams = new URLSearchParams(location.search);
+const shotMode = shotParams.get("mode");      // main | setup | lock | settings
+const shotTab = shotParams.get("tab");        // password | logs | autolock
+const shotTheme = shotParams.get("theme");    // light | dark
+
+function renderShell() {
+  applyTheme(shotTheme === "light" || shotTheme === "dark" ? shotTheme : state.theme);
+  renderAll();
+  renderLogs();
+  renderLockUI();
+}
+
+async function bootApp() {
+  if (shotMode) {
+    // 界面核对模式（不接后端）：用内存空状态渲染指定界面
+    state = emptyState();
+    state.passwordSet = shotMode !== "setup";
+    state.locked = shotMode === "lock";
+    renderShell();
+    showView("main");
+    if (shotMode === "setup") {
+      $("setupModal").classList.add("visible");
+      $("setupPass").focus();
+    } else if (shotMode === "lock") {
+      showLockOverlay();
+    } else if (shotMode === "settings") {
+      const tab = shotTab && ["password", "logs", "autolock"].includes(shotTab) ? shotTab : "password";
+      showView("settings");
+      document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.tab === tab));
+      document.querySelectorAll(".settings-tab").forEach((t) => t.classList.toggle("visible", t.id === "tab-" + tab));
+      if (tab === "logs") renderLogs();
+      if (tab === "autolock") renderLockUI();
+      updateStatusPill();
+    } else {
+      updateStatusPill();
+    }
+    return;
+  }
+
+  let boot;
+  try { boot = await bridge.post("boot", {}); }
+  catch (e) {
+    document.body.innerHTML = `<div style="padding:48px;font:14px/1.8 'Microsoft YaHei UI',sans-serif;color:#57607a">` +
+      `⚠️ 未能连接 DH-BOX 加密后端<br><br>请通过 DH-BOX.exe 启动本界面（C# 后端负责全部加密读写）。` +
+      `<br><span style="color:#98a2b8">${esc(e.message)}</span></div>`;
+    return;
+  }
+
+  hostLogPath = boot.logPath || "";
+
+  if (!boot.hasVault) {
+    // 首次使用：设置主密码
+    state = emptyState();
+    state.passwordSet = false;
+    renderShell();
+    showView("main");
+    updateStatusPill();
+    $("setupModal").classList.add("visible");
+    setTimeout(() => $("setupPass").focus(), 30);
+    return;
+  }
+
+  // 已有保险库：以锁定状态启动，等待在覆盖层输入主密码
+  state = emptyState();
+  state.passwordSet = true;
+  state.locked = true;
+  renderShell();
+  showView("main");
+  showLockOverlay();
+}
+
+bootApp();
+</script>
+</body>
+</html>

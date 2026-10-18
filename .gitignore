@@ -1,0 +1,21 @@
+# 构建产物
+bin/
+tests/bin/
+
+# WebView2 SDK（build.ps1 会提示一键下载到此处）
+tools/webview2/
+
+# 运行时数据 —— 绝不提交（你的保险库与配置）
+*.vault
+*.vault.bak
+Vault.config
+vault.log
+WebView2Data/
+
+# 编辑器 / 系统
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
