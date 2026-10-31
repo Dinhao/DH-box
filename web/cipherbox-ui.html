@@ -162,7 +162,19 @@
   background: var(--accent); opacity: 0; transition: opacity .15s ease;
   pointer-events: none; z-index: 999;
 }
-.resize-hint.visible { opacity: .6; }
+\.resize-hint.visible { opacity: .6; }
+/* ---------- 框选矩形 ---------- */
+#fileList {
+  user-select: none;   /* 框选拖动时不选中文字 */
+}
+.select-band {
+  position: fixed; border: 1px solid var(--accent); background: var(--accent-soft);
+  opacity: .45; pointer-events: none; z-index: 900; border-radius: 3px;
+}
+/* ---------- 系统文件图标 ---------- */
+.fi { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; display: inline-block; }
+.fi-wrap { display: inline-flex; align-items: center; }
+.tree-item .fi { width: 16px; height: 16px; }
 .lock-overlay { -webkit-user-select: none; user-select: none; }                 /* 拖动时避免选中文字 */
 .lock-overlay input, .lock-overlay textarea { -webkit-user-select: text; user-select: text; }
   #btnTheme { width: 38px; padding: 8px 0; justify-content: center; font-size: 15px; }
@@ -698,6 +710,7 @@
             <input class="input" type="password" id="pwNew" placeholder="6 位以上，建议包含大小写字母与数字" autocomplete="off">
             <div class="strength" data-level="0" id="pwStrength"><i></i><i></i><i></i><i></i></div>
             <div class="strength-label" id="pwStrengthLabel">请输入新密码</div>
+            <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;line-height:1.5">推荐：≥12 位「大小写字母 + 数字 + 符号」，或 ≥8 个汉字（如「鲸鱼钢笔地铁雪松」）</div>
           </div>
           <div class="field">
             <label>确认新密码</label>
@@ -849,6 +862,7 @@
       <input class="input" type="password" id="setupPass" placeholder="6 位以上，建议包含大小写字母与数字" autocomplete="off">
       <div class="strength" data-level="0" id="setupStrength"><i></i><i></i><i></i><i></i></div>
       <div class="strength-label" id="setupStrengthLabel">请输入主密码</div>
+      <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px;line-height:1.5">推荐：≥12 位「大小写字母 + 数字 + 符号」，或 ≥8 个汉字（如「鲸鱼钢笔地铁雪松」）</div>
     </div>
     <div class="field">
       <label>确认主密码</label>
@@ -973,10 +987,29 @@ function fmtSize(n) {
   if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
   return (n / 1073741824).toFixed(2) + " GB";
 }
+/* ---------- 系统默认文件图标（C# 侧取 Windows 图标；未加载时回退 emoji）---------- */
+const sysIcons = {};
+const emojiIcons = { pdf: "📕", txt: "📄", md: "📝", docx: "📘", xlsx: "📗", png: "🖼️", jpg: "🖼️", zip: "🗜️", exe: "⚙️", mp4: "🎞️", mp3: "🎵" };
+function iconKey(f) { return f.type === "dir" ? "__dir__" : (f.ext || "__file__"); }
 function fileIcon(f) {
-  if (f.type === "dir") return "📁";
-  const map = { pdf: "📕", txt: "📄", md: "📝", docx: "📘", xlsx: "📗", png: "🖼️", jpg: "🖼️", zip: "🗜️", exe: "⚙️", mp4: "🎞️", mp3: "🎵" };
-  return map[f.ext] || "🔒";
+  const k = iconKey(f);
+  const url = sysIcons[k];
+  if (url) return `<img class="fi" src="${url}" alt="">`;
+  return f.type === "dir" ? "📁" : (emojiIcons[f.ext] || "🔒");
+}
+let iconFetching = false;
+async function ensureIcons() {
+  if (iconFetching || !bridge || !bridge.host) return;
+  const need = ["__dir__"];
+  const collect = (node) => { for (const c of node.children) { need.push(iconKey(c)); if (c.type === "dir") collect(c); } };
+  collect(state.tree);
+  const missing = [...new Set(need)].filter((k) => k && !(k in sysIcons));
+  if (missing.length === 0) return;
+  iconFetching = true;
+  try {
+    const r = await bridge.post("fileIcons", { exts: missing.join(",") });
+    if (r && r.icons) { Object.assign(sysIcons, r.icons); renderFiles(); }
+  } catch (e) { } finally { iconFetching = false; }
 }
 function ftype(f) {
   if (f.type === "dir") return "文件夹";
@@ -1107,6 +1140,11 @@ function applyStateFromHost(s) {
   if (state.theme !== "dark" && state.theme !== "light") state.theme = "light";
   state.columns = Array.isArray(state.columns) ? state.columns.filter((c) => c in COLUMN_DEFS) : [...DEFAULT_COLUMNS];
   if (!state.columns.length) state.columns = [...DEFAULT_COLUMNS];
+  if (!state.tree || !Array.isArray(state.tree.children)) {
+    const d0 = now();
+    const stamp0 = `${fmtDate(d0)} ${fmtClock(d0)}`;
+    state.tree = { name: "", type: "dir", children: [], ctime: stamp0, mtime: stamp0 };
+  }
   if (!state.settings) state.settings = { lockMode: "duration", durationMinutes: 20, unlockUntil: null };
   if (!Array.isArray(state.logs)) state.logs = [];
   if (!Array.isArray(state.cwd)) state.cwd = [];
@@ -1118,6 +1156,7 @@ function applyStateFromHost(s) {
   renderAll();
   renderLogs();
   renderLockUI();
+  ensureIcons();   // 预取系统文件图标
 }
 
 /* ---------- 后端数据同步 ---------- */
@@ -1252,18 +1291,24 @@ function pathJoin(arr) { return arr.map((s) => (typeof s === "string" ? s : s.na
 
 /* ---------- 剪切板 ---------- */
 function clipboardEmpty() { return !state.clipboard || !state.clipboard.item; }
-function setClipboard(mode, item) {
-  state.clipboard = { mode, item, fromDir: state.cwd.map((s) => s.name) };
-  updateClipChip();
-  persist();
-}
+function setClipboard(mode, items) {
+    const list = Array.isArray(items) ? items : [items];
+    if (!list.length) return;
+    state.clipboard = { mode, items: list, item: list[0], fromDir: state.cwd.map((s) => s.name) };
+    updateClipChip();
+    persist();
+    // 把明文临时副本放进系统剪贴板（多选逐个）：可直接到电脑文件夹里粘贴
+    // 一次性把所有选中项放入系统剪贴板（多选可一起粘贴到电脑）
+    if (list.length) bridge.post("copyToClipboard", { cwd: cwdPath(), names: list.map((x) => x.name).join("\n") }).catch(() => {});
+  }
 function clearClipboard() { state.clipboard = null; updateClipChip(); persist(); }
 function updateClipChip() {
   const chip = $("clipChip");
   if (clipboardEmpty()) { chip.classList.remove("show"); return; }
   const c = state.clipboard;
   chip.classList.add("show");
-  chip.textContent = `${c.mode === "copy" ? "📋 已复制" : "✂️ 已剪切"}：${c.item.name}`;
+  const n = (c.items && c.items.length) || 1;
+  chip.textContent = `${c.mode === "copy" ? "📋 已复制" : "✂️ 已剪切"}：${n > 1 ? n + " 项" : c.item.name}`;
 }
 /* 目标目录是否位于某文件夹子树内（防剪切进自己） */
 function dirContains(folder, targetPathArr) {
@@ -1297,7 +1342,7 @@ function renderTree(node, container, depth, pathArr) {
     const cur = state.cwd.length === depth && state.cwd[depth - 1]?.name === child.name;
     if (cur) row.classList.add("current");
     row.style.paddingLeft = (10 + depth * 14) + "px";
-    row.innerHTML = `<span class="tree-arrow">${child.children.some(c=>c.type==="dir") ? "▶" : ""}</span><span>📁</span><span>${esc(child.name)}</span>`;
+    row.innerHTML = `<span class="tree-arrow">${child.children.some(c=>c.type==="dir") ? "▶" : ""}</span><span class="fi-wrap">${fileIcon({ type: "dir" })}</span><span>${esc(child.name)}</span>`;
     row.onclick = () => { state.cwd = pathArr.concat([child.name]).map((n) => ({ name: n })); selectedName = null; renderAll(); };
     container.appendChild(row);
     renderTree(child, container, depth + 1, pathArr.concat([child.name]));
@@ -1354,7 +1399,43 @@ function toggleColumn(key) {
 }
 
 /* ---------- 渲染：文件列表（动态列） ---------- */
-let selectedName = null;
+let selectedName = null;                                  // 最近单选（兼容旧逻辑）
+let selectedNames = new Set();                            // 多选集合（Windows 式选择）
+let selectAnchor = null;                                  // Shift 范围选择锚点
+
+function clearSelection() { selectedNames.clear(); selectAnchor = null; selectedName = null; }
+function selectOnly(name) { selectedNames = new Set([name]); selectAnchor = name; selectedName = name; renderFiles(); }
+function toggleSelected(name) {
+  if (selectedNames.has(name)) selectedNames.delete(name); else selectedNames.add(name);
+  selectAnchor = name;
+  selectedName = selectedNames.size === 1 ? [...selectedNames][0] : null;
+  renderFiles();
+}
+function selectRange(fromName, toName) {
+  const all = listItems();
+  let a = all.findIndex((x) => x.name === fromName);
+  let b = all.findIndex((x) => x.name === toName);
+  if (a < 0) a = 0;
+  if (b < 0) b = 0;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  selectedNames = new Set(all.slice(lo, hi + 1).map((x) => x.name));
+  selectedName = selectedNames.size === 1 ? [...selectedNames][0] : null;
+  renderFiles();
+}
+function selectAll() {
+  const all = listItems();
+  selectedNames = new Set(all.map((x) => x.name));
+  selectedName = null;
+  selectAnchor = all.length ? all[0].name : null;
+  renderFiles();
+  if (all.length) toast(`已全选 ${all.length} 项`, "ok");
+}
+function selectedItems() { return listItems().filter((f) => selectedNames.has(f.name)); }
+function handleRowClick(e, f) {
+  if (e.ctrlKey || e.metaKey) { toggleSelected(f.name); return; }
+  if (e.shiftKey && selectAnchor) { selectRange(selectAnchor, f.name); return; }
+  selectOnly(f.name);
+}
 
 function gridTemplate() {
   const cols = state.columns.map((c) => COLUMN_DEFS[c].width);
@@ -1378,10 +1459,62 @@ function cellHtml(key, f) {
     case "size":  return `<span class="file-meta col-size">${f.type === "dir" ? "—" : fmtSize(f.size)}</span>`;
     case "mtime": return `<span class="file-meta col-mtime">${f.mtime}</span>`;
     case "ctime": return `<span class="file-meta col-ctime">${f.ctime}</span>`;
-    case "enc":   return `<span class="col-enc ${f.enc ? "enc-yes" : "enc-no"}">${f.enc ? "🔒 已加密" : "未加密"}</span>`;
+    case "enc":   return `<span class="col-enc ${(f.enc || f.type === "dir") ? "enc-yes" : "enc-no"}">${(f.enc || f.type === "dir") ? "🔒 已加密" : "未加密"}</span>`;
     default: return "";
   }
 }
+/* ---------- 框选（拖拽矩形选择，与 Windows 一致）---------- */
+let bandStart = null, bandMoved = false, bandOnRow = false;
+let suppressClickUntil = 0;   // 框选结束后短暂抑制 click，避免清空刚框选的选择
+(function initSelectBand() {
+  const fl = $("fileList");
+  if (!fl) return;
+  const band = document.createElement("div");
+  band.className = "select-band";
+  band.style.display = "none";
+  document.body.appendChild(band);
+  // 框选：整个内容区的空白都能拖（含文件列表下方的空白）
+  document.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest("input, textarea, .modal-mask, #ctxMenu, button, a, .tree-item, .crumb, .nav-item")) return;
+    if (edgeAtPoint(e.clientX, e.clientY)) return;   // 窗口边缘交给缩放
+    bandStart = { x: e.clientX, y: e.clientY };
+    bandMoved = false;
+    bandOnRow = !!e.target.closest(".file-row");   // 从文件行上开始拖动也允许框选
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!bandStart) return;
+    const dx = Math.abs(e.clientX - bandStart.x), dy = Math.abs(e.clientY - bandStart.y);
+    if (!bandMoved && dx + dy > 4) { bandMoved = true; band.style.display = "block"; }
+    if (!bandMoved) return;
+    Object.assign(band.style, {
+      left: Math.min(bandStart.x, e.clientX) + "px",
+      top: Math.min(bandStart.y, e.clientY) + "px",
+      width: dx + "px",
+      height: dy + "px",
+    });
+  });
+  document.addEventListener("mouseup", (e) => {
+    if (!bandStart) return;
+    const start = bandStart, moved = bandMoved;
+    bandStart = null; bandMoved = false;
+    band.style.display = "none";
+    if (!moved) { if (!bandOnRow) { clearSelection(); renderFiles(); } return; }   // 空白单击才取消选择
+    const x1 = Math.min(start.x, e.clientX), y1 = Math.min(start.y, e.clientY);
+    const x2 = Math.max(start.x, e.clientX), y2 = Math.max(start.y, e.clientY);
+    const picked = [];
+    fl.querySelectorAll(".file-row").forEach((r) => {
+      const rr = r.getBoundingClientRect();
+      if (rr.left < x2 && rr.right > x1 && rr.top < y2 && rr.bottom > y1 && r.dataset.name) picked.push(r.dataset.name);
+    });
+    selectedNames = new Set(picked);
+    selectedName = picked.length === 1 ? picked[0] : null;
+    selectAnchor = picked[0] || null;
+    renderFiles();
+    suppressClickUntil = Date.now() + 350;   // 框选后的 click 不再清空选择
+    if (picked.length) toast(`框选 ${picked.length} 项`, "ok");
+  });
+})();
 
 function renderFiles() {
   const items = listItems().slice().sort((a, b) =>
@@ -1397,15 +1530,20 @@ function renderFiles() {
   }
   for (const f of items) {
     const row = document.createElement("div");
-    row.className = "file-row" + (f.name === selectedName ? " selected" : "");
+    row.className = "file-row" + (selectedNames.has(f.name) ? " selected" : "");
+    row.dataset.name = f.name;
     row.style.gridTemplateColumns = gridTemplate();
     row.innerHTML = `
       <span class="file-icon">${fileIcon(f)}</span>
-      <span class="file-name"><span>${esc(f.name)}</span>${f.enc ? '<span class="lock-badge">已加密</span>' : '<span class="plain-badge">未加密</span>'}</span>
+      <span class="file-name"><span>${esc(f.name)}</span>${(f.enc || f.type === "dir") ? '<span class="lock-badge">已加密</span>' : '<span class="plain-badge">未加密</span>'}</span>
       ${state.columns.map((k) => cellHtml(k, f)).join("")}`;
-    row.onclick = () => { selectedName = f.name; renderFiles(); };
+    row.onclick = (e) => handleRowClick(e, f);
     row.ondblclick = () => openItem(f);
-    row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); selectedName = f.name; renderFiles(); showCtxMenu(e, f); };
+    row.oncontextmenu = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (!selectedNames.has(f.name)) selectOnly(f.name);   // 右键未选中项 → 先选中它（多选保留）
+      showCtxMenu(e, f);
+    };
     list.appendChild(row);
   }
   const st = statDir(dirAt(state.cwd.map((s) => s.name)));
@@ -1417,7 +1555,7 @@ function renderFiles() {
 function openItem(f) {
   if (f.type === "dir") {
     state.cwd.push({ name: f.name });
-    selectedName = null;
+    clearSelection();
     renderAll();
   } else {
     toast(`已打开文件「${f.name}」`, "ok");
@@ -1440,6 +1578,7 @@ function renderAll() {
   renderTree(state.tree, treeRoot, 1, []);
   renderFiles();
   $("btnUp").disabled = state.cwd.length === 0;
+  ensureIcons();   // 缺图标时异步预取系统图标
 }
 
 /* ---------- 右键菜单 ---------- */
@@ -1458,7 +1597,7 @@ function showCtxMenu(e, item) {
     entries.push({ sep: true });
     entries.push({ ico: "📋", label: "复制", act: "copy" });
     entries.push({ ico: "✂️", label: "剪切", act: "cut" });
-    entries.push({ ico: "📥", label: "粘贴", act: "paste", disabled: clipboardEmpty() || f.type !== "dir" });
+    entries.push({ ico: "📥", label: "粘贴", act: "paste", disabled: f.type !== "dir" });   // 文件夹均可粘贴（含系统剪贴板内容）
     entries.push({ sep: true });
     entries.push({ ico: "✏️", label: "重命名", act: "rename" });
     entries.push({ ico: f.enc ? "🔓" : "🔒", label: f.enc ? "解密" : "加密", act: "encrypt" });
@@ -1470,7 +1609,7 @@ function showCtxMenu(e, item) {
     entries.push({ ico: "📁", label: "新建文件夹", act: "newFolder" });
     entries.push({ ico: "📤", label: "导入文件…", act: "importFiles" });
     entries.push({ ico: "📂", label: "导入文件夹…", act: "importFolder" });
-    entries.push({ ico: "📥", label: "粘贴", act: "paste", disabled: clipboardEmpty() });
+    entries.push({ ico: "📥", label: "粘贴", act: "paste" });   // 不禁用：内部剪贴板为空时仍可从系统剪贴板导入
     entries.push({ sep: true });
     entries.push({ ico: "🔄", label: "刷新", act: "refresh" });
     entries.push({ sep: true });
@@ -1507,8 +1646,8 @@ function runCtxAction(act) {
   const item = target && target.kind === "item" ? target.item : null;
   switch (act) {
     case "open": openItem(item); break;
-    case "copy": setClipboard("copy", item); toast(`已复制「${item.name}」`, "ok"); break;
-    case "cut":  setClipboard("cut", item);  toast(`已剪切「${item.name}」，请到目标文件夹粘贴`, "ok"); break;
+    case "copy": setClipboard("copy", selectedItems().length ? selectedItems() : [item]); toast(`已复制「${item.name}」（可直接粘贴到电脑文件夹）`, "ok"); break;
+    case "cut":  setClipboard("cut", selectedItems().length ? selectedItems() : [item]);  toast(`已剪切「${item.name}」，请到目标文件夹粘贴`, "ok"); break;
     case "paste": doPaste(item); break;
     case "rename": openRename(item); break;
     case "encrypt": doDecrypt(item); break;
@@ -1527,8 +1666,69 @@ function runCtxAction(act) {
 }
 
 /* ---------- 右键动作实现 ---------- */
+// 从系统剪贴板导入（在资源管理器里复制/剪切的文件或文件夹 → 加密进保险库）
+async function pasteFromOS() {
+  let r;
+  try { r = await bridge.post("pasteFromClipboard", { cwd: cwdPath() }); }
+  catch (e) {
+    const msg = String(e.message || "");
+    if (msg.indexOf("剪贴板") >= 0) { toast(msg, "err"); return; }
+    toast("粘贴失败：" + msg, "err"); return;
+  }
+  if (!r.entries || !r.entries.length) { toast("系统剪贴板里没有可导入的文件", "err"); return; }
+  const dir = dirAt(state.cwd.map((s) => s.name));
+  if (!dir) return;
+  const d0 = now();
+  const stamp = `${fmtDate(d0)} ${fmtClock(d0)}`;
+  const place = (node, parts, en) => {
+    if (!parts.length) {
+      node.children.push({ name: en.leaf, type: "file", ext: en.ext, size: en.size, ctime: en.ctime, mtime: en.mtime, enc: true });
+      return;
+    }
+    const seg = parts.shift();
+    let next = node.children.find((c) => c.type === "dir" && c.name === seg);
+    if (!next) { next = { name: seg, type: "dir", children: [], ctime: stamp, mtime: stamp }; node.children.push(next); }
+    place(next, parts, en);
+  };
+  for (const en of r.entries) {
+    const parts = en.relPath.split("/");
+    place(dir, parts.slice(0, -1), { leaf: parts[parts.length - 1], ext: en.ext, size: en.size, ctime: en.ctime, mtime: en.mtime });
+  }
+  addLog("info", `${r.moved ? "剪切" : "复制"}导入：${r.entries.map((e) => e.relPath).join("、")}（${dirLabel()}）`);
+  persist(); renderAll(); ensureIcons();
+  toast(`已从系统剪贴板导入 ${r.count} 个文件（AES-256 加密入库）`, "ok");
+}
+
 async function doPaste(targetDir) {
-  if (clipboardEmpty()) { toast("剪贴板为空", "err"); return; }
+
+  // 多选：逐项粘贴（复用单条逻辑）
+
+  const _c = state.clipboard;
+
+  if (_c && _c.items && _c.items.length > 1) {
+
+    const list = _c.items.slice(), mode = _c.mode, fromDir = _c.fromDir;
+
+    let done = 0;
+
+    for (const it of list) {
+
+      state.clipboard = { mode, items: [it], item: it, fromDir };
+
+      await doPaste(targetDir);
+
+      done++;
+
+    }
+
+    clearClipboard();
+
+    toast(`已粘贴 ${done} 项`, "ok");
+
+    return;
+
+  }
+  if (clipboardEmpty()) { await pasteFromOS(); return; }   // 内部剪贴板为空 → 尝试系统剪贴板里的文件
   const c = state.clipboard;
   const srcDir = dirAt(c.fromDir);
   if (!srcDir) { clearClipboard(); toast("原位置已不存在", "err"); return; }
@@ -1583,7 +1783,7 @@ function openRename(item) {
   $("renameInput").select();
 }
 $("btnRenameCancel").onclick = () => $("renameModal").classList.remove("visible");
-$("renameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnRenameConfirm").click(); });
+$("renameInput").addEventListener("keydown", (e) => { if (e.isComposing) return; if (e.key === "Enter") $("btnRenameConfirm").click(); });
 $("btnRenameConfirm").onclick = async () => {
   const item = ctxTarget && ctxTarget.kind === "item" ? ctxTarget.item : null;
   if (!item) return;
@@ -1611,29 +1811,34 @@ $("btnRenameConfirm").onclick = async () => {
 // 保险库内所有文件始终以 AES-256 加密存储，不存在“未加密条目”。
 
 function openDelete(item) {
-  ctxTarget = { kind: "item", item };
-  $("deleteMsg").innerHTML = item.type === "dir"
-    ? `确定删除文件夹 <b>${esc(item.name)}</b> 及其中的全部内容吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`
-    : `确定删除文件 <b>${esc(item.name)}</b> 吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`;
-  $("deleteModal").classList.add("visible");
-}
+    const items = item ? [item] : selectedItems();
+    if (!items.length) { toast("请先选择要删除的项目", "err"); return; }
+    ctxTarget = { kind: "item", item: items[0], items };
+    if (items.length > 1) {
+      $("deleteMsg").innerHTML = `确定删除选中的 <b>${items.length}</b> 个项目吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`;
+    } else {
+      $("deleteMsg").innerHTML = items[0].type === "dir"
+        ? `确定删除文件夹 <b>${esc(items[0].name)}</b> 及其中的全部内容吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`
+        : `确定删除文件 <b>${esc(items[0].name)}</b> 吗？<br><span style="font-size:12px;color:var(--text-faint)">此操作不可恢复，删除后不会进入回收站。</span>`;
+    }
+    $("deleteModal").classList.add("visible");
+  }
 $("btnDeleteCancel").onclick = () => $("deleteModal").classList.remove("visible");
 $("btnDeleteConfirm").onclick = async () => {
-  const item = ctxTarget && ctxTarget.kind === "item" ? ctxTarget.item : null;
-  if (!item) return;
-  try { await bridge.post("delete", { cwd: cwdPath(), name: item.name }); }
-  catch (e) { toast("删除失败：" + e.message, "err"); return; }
-  const dir = dirAt(state.cwd.map((s) => s.name));
-  const idx = dir.children.indexOf(item);
-  if (idx >= 0) dir.children.splice(idx, 1);
-  addLog("warn", `删除：${item.name}（${dirLabel()}）`);
-  if (state.clipboard && state.clipboard.item === item) clearClipboard();
-  persist();
-  $("deleteModal").classList.remove("visible");
-  if (selectedName === item.name) selectedName = null;
-  renderAll();
-  toast(`已删除「${item.name}」`, "ok");
-};
+    const items = (ctxTarget && ctxTarget.items) || (ctxTarget && ctxTarget.item ? [ctxTarget.item] : []);
+    if (!items.length) return;
+    try { await bridge.post("delete", { cwd: cwdPath(), names: items.map((x) => x.name).join("\n") }); }
+    catch (e) { toast("删除失败：" + e.message, "err"); return; }
+    const dir = dirAt(state.cwd.map((s) => s.name));
+    for (const it of items) { const idx = dir.children.indexOf(it); if (idx >= 0) dir.children.splice(idx, 1); }
+    addLog("warn", `删除：${items.length} 项（${dirLabel()}）`);
+    if (state.clipboard && items.includes(state.clipboard.item)) clearClipboard();
+    persist();
+    $("deleteModal").classList.remove("visible");
+    clearSelection();
+    renderAll();
+    toast(`已删除 ${items.length} 项`, "ok");
+  };
 
 function showProps(item, overrideStat) {
   const isDir = item.type === "dir";
@@ -1663,7 +1868,7 @@ $("btnUp").onclick = () => { state.cwd.pop(); selectedName = null; renderAll(); 
 $("btnPaste").onclick = () => doPaste(null);
 $("btnNewFolder").onclick = () => { $("newFolderName").value = ""; $("newFolderErr").textContent = ""; $("newFolderModal").classList.add("visible"); $("newFolderName").focus(); };
 $("btnNewCancel").onclick = () => $("newFolderModal").classList.remove("visible");
-$("newFolderName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnNewConfirm").click(); });
+$("newFolderName").addEventListener("keydown", (e) => { if (e.isComposing) return; if (e.key === "Enter") $("btnNewConfirm").click(); });
 $("btnNewConfirm").onclick = () => {
   const name = $("newFolderName").value.trim();
   const err = $("newFolderErr");
@@ -1704,16 +1909,45 @@ $("fileList").addEventListener("contextmenu", (e) => {
 
 /* 全局关闭右键菜单 */
 document.addEventListener("click", (e) => {
+  if (Date.now() < suppressClickUntil) return;
   if (!$("ctxMenu").contains(e.target)) hideCtxMenu();
+  // 点击任意空白处（列表内外都算）取消多选，与 Windows 一致
+  if (selectedNames.size && !e.target.closest(".file-row, #ctxMenu, input, textarea, button, .tree-item, .crumb, .nav-item, a")) {
+    clearSelection();
+    renderFiles();
+  }
 });
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest("#ctxMenu")) return;       // 菜单自身右键
   if (e.target.closest("#fileList")) return;      // 文件区由行/空白处理
+  if (e.target.closest("input, textarea, .modal-mask")) return;   // 输入框/弹窗保持原生菜单
   e.preventDefault();
-  hideCtxMenu();
+  showCtxMenu(e, null);   // 其它空白处：弹出空白右键菜单（含“粘贴”）
 });
 window.addEventListener("blur", hideCtxMenu);
-window.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCtxMenu(); });
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing) return;   // 中文输入法组合中（如按 Enter 选词）不触发快捷键
+  if (e.key === "Escape") { hideCtxMenu(); clearSelection(); renderFiles(); return; }
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === "a") { e.preventDefault(); selectAll(); return; }
+    if (k === "c" || k === "x") {
+      const items = selectedItems();
+      if (!items.length) return;
+      e.preventDefault();
+      setClipboard(k === "c" ? "copy" : "cut", items);
+      addLog("info", `${k === "c" ? "复制" : "剪切"}：${items.length} 项（${dirLabel()}）`);
+      toast(`已${k === "c" ? "复制" : "剪切"} ${items.length} 项（可粘贴到电脑文件夹）`, "ok");
+      return;
+    }
+    if (k === "v") { e.preventDefault(); doPaste(null); return; }
+  }
+  if (e.key === "Delete" && selectedItems().length) { e.preventDefault(); openDelete(null); return; }
+  if (e.key === "F2" && selectedItems().length === 1) { e.preventDefault(); openRename(selectedItems()[0]); return; }
+  if (e.key === "Enter" && selectedItems().length === 1) { e.preventDefault(); openItem(selectedItems()[0]); return; }
+});
 
 /* ---------- 日志 ---------- */
 function addLog(lv, msg) {
@@ -1755,6 +1989,10 @@ function pwStrengthLevel(pw) {
   if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
   if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
   if (pw.length >= 10) score++;
+  // 中文等多字节字符熵很高：4 个以上 +1，8 个以上再 +1（避免“鲸鱼钢笔地铁雪松”被判成弱密码）
+  const wide = (pw.match(/[^\x00-\x7F]/g) || []).length;
+  if (wide >= 4) score++;
+  if (wide >= 8) score++;
   return Math.min(score, 4);
 }
 function refreshStrength() {
@@ -1829,7 +2067,7 @@ $("btnUnlock").onclick = async () => {
   hideLockOverlay();
   toast("已解锁", "ok");
 };
-$("unlockPass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnUnlock").click(); });
+$("unlockPass").addEventListener("keydown", (e) => { if (e.isComposing) return; if (e.key === "Enter") $("btnUnlock").click(); });
 
 /* ---------- 首次设置密码 ---------- */
 function refreshSetupStrength() {
@@ -1840,7 +2078,7 @@ function refreshSetupStrength() {
   $("setupStrengthLabel").textContent = pw ? labels[level] : "请输入主密码";
 }
 $("setupPass").addEventListener("input", refreshSetupStrength);
-$("setupPassConfirm").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnSetupConfirm").click(); });
+$("setupPassConfirm").addEventListener("keydown", (e) => { if (e.isComposing) return; if (e.key === "Enter") $("btnSetupConfirm").click(); });
 $("btnSetupConfirm").onclick = async () => {
   const pass = $("setupPass").value, cf = $("setupPassConfirm").value;
   const err = $("setupErr");
@@ -1904,8 +2142,8 @@ function updateDeadlineNote() {
 $("modeDuration").onclick = () => { state.settings.lockMode = "duration"; renderLockUI(); };
 $("modeUntil").onclick = () => { state.settings.lockMode = "until"; renderLockUI(); };
 function clampDuration(v) { v = Math.round(Number(v)); if (!Number.isFinite(v)) v = 20; return Math.min(1440, Math.max(1, v)); }
-$("btnMinus").onclick = () => { state.settings.durationMinutes = clampDuration(($("durationInput").value || 20) - 1); renderLockUI(); };
-$("btnPlus").onclick = () => { state.settings.durationMinutes = clampDuration(($("durationInput").value || 20) + 1); renderLockUI(); };
+$("btnMinus").onclick = () => { state.settings.durationMinutes = clampDuration(Number($("durationInput").value) - 1); renderLockUI(); };
+$("btnPlus").onclick = () => { state.settings.durationMinutes = clampDuration(Number($("durationInput").value) + 1); renderLockUI(); };
 $("durationInput").addEventListener("change", () => { state.settings.durationMinutes = clampDuration($("durationInput").value); renderLockUI(); });
 $("untilInput").addEventListener("change", updateDeadlineNote);
 

@@ -87,8 +87,16 @@ namespace SecretVault
                     WrapAns = new byte[VaultContainer.WrapBlobSize],
                     Question = null,
                 };
-                using (EnterContainerLock(path))
-                    VaultContainer.WriteNew(path, h);
+                var mkForDir = new MasterKeys();
+                Buffer.BlockCopy(master, 0, mkForDir.WrapKey, 0, CryptoUtil.WrapKeySize);
+                try
+                {
+                    using (EnterContainerLock(path))
+                    {
+                        VaultContainer.WriteNew(path, h, mkForDir);
+                    }
+                }
+                finally { mkForDir.Wipe(); }
             }
             finally
             {
@@ -103,7 +111,30 @@ namespace SecretVault
             VaultContainer.VaultHeader h;
             try { h = VaultContainer.ReadHeader(path); }
             catch (Exception ex) { error = $"读取容器失败：{ex.Message}"; return null; }
-            return UnlockWithHeader(h, password, out error);
+            var mk = UnlockWithHeader(h, password, out error);
+            if (mk == null) return null;
+            // v3：校验目录完整性（防条目名/大小/时间/顺序被第三方篡改）
+            try
+            {
+                var body = VaultContainer.ReadBody(path);
+                if (body.Version >= VaultContainer.Version && body.DirMac != null)
+                {
+                    var expect = VaultContainer.ComputeDirMac(mk, body.Entries);
+                    if (!CryptoUtil.FixedTimeEquals(expect, body.DirMac))
+                    {
+                        mk.Wipe();
+                        error = "保险库目录校验失败：条目信息可能已被第三方篡改。";
+                        return null;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                mk.Wipe();
+                error = $"校验保险库目录失败：{ex.Message}";
+                return null;
+            }
+            return mk;
         }
 
         /// <summary>修改密码：校验旧密码 → 用新密码重新包装主密钥（不重加密任何文件）。</summary>
@@ -206,6 +237,19 @@ namespace SecretVault
                         var mk = new MasterKeys();
                         Buffer.BlockCopy(blob, 0, mk.WrapKey, 0, CryptoUtil.WrapKeySize);
                         CryptoUtil.Wipe(blob);
+
+                        // v3：同样校验目录完整性，避免被篡改的库通过“找回”绕过检测
+                        var recBody = VaultContainer.ReadBody(path);
+                        if (recBody.Version >= VaultContainer.Version && recBody.DirMac != null)
+                        {
+                            var recExpect = VaultContainer.ComputeDirMac(mk, recBody.Entries);
+                            if (!CryptoUtil.FixedTimeEquals(recExpect, recBody.DirMac))
+                            {
+                                mk.Wipe();
+                                error = "保险库目录校验失败：条目信息可能已被第三方篡改。";
+                                return null;
+                            }
+                        }
 
                         RewrapPassword(h, mk, newPassword);  // 用新密码重新包装主密钥
                         VaultContainer.RewriteHeader(path, h);
@@ -460,19 +504,15 @@ namespace SecretVault
                 using (var w = new BinaryWriter(dst, Encoding.UTF8))
                 {
                     var items = transform(body, src);
-                    VaultContainer.WriteHeader(w, body.Header);   // 保留当前头部（密码/找回设置不变）
-                    w.Write(items.Count);
+                    // 先写目录（含目录完整性 MAC），再写各条目密文；写入即升级为 v3
+                    var metas = new List<VaultEntry>(items.Count);
+                    foreach (var it in items)
+                        metas.Add(new VaultEntry { Name = it.Name, IsFile = it.IsFile, PlainLength = it.PlainLength, Modified = it.Modified, Created = it.Created });
+                    VaultContainer.WriteHeader(w, body.Header, VaultContainer.Version);
+                    VaultContainer.WriteEntries(w, metas);
+                    w.Write(VaultContainer.ComputeDirMac(mk, metas));
                     foreach (var it in items)
                     {
-                        var meta = new VaultEntry
-                        {
-                            Name = it.Name,
-                            IsFile = it.IsFile,
-                            PlainLength = it.PlainLength,
-                            Modified = it.Modified,
-                            Created = it.Created,
-                        };
-                        VaultContainer.WriteEntryMeta(w, meta);
                         if (!it.IsFile) continue;
 
                         if (it.CopyFrom != null)

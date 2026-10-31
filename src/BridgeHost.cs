@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
+using System.Drawing;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -43,6 +45,9 @@ namespace SecretVault
 
         /// <summary>已打开的临时解密文件：容器条目 →（本地文件, 解密时刻），退出/锁定时回写修改。</summary>
         private readonly Dictionary<string, (string Local, DateTime At)> openedFiles = new();
+
+        /// <summary>系统图标缓存（扩展名 / __dir__ → data:image/png;base64）。</summary>
+        private readonly Dictionary<string, string> iconCache = new();
 
         private MasterKeys? master;
 
@@ -191,6 +196,7 @@ namespace SecretVault
                     // 顺序：写回改动 → 清理临时明文 → 清除内存密钥（三步均异常安全，确保密钥必然清零）
                     try { FlushOpenedFiles(); } catch { }
                     try { CleanOpenCache(); } catch { }
+                    try { CleanClipCache(); } catch { }
                     master?.Wipe();
                     master = null;
                     Logger.Write("保险库", "已锁定（内存密钥已清除，临时解密文件已清理）");
@@ -306,13 +312,22 @@ namespace SecretVault
                 case "delete":
                 {
                     RequireUnlocked();
-                    string entry = SafeEntryPath(Join(args, "cwd", "name"), false);
-                    if (EntryExists(entry))
+                    string cwd = SafeEntryPath(S(args, "cwd"));
+                    var names = S(args, "names").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(x => x.Trim('\r', ' ')).Where(x => x.Length > 0).ToList();
+                    if (names.Count == 0) names.Add(S(args, "name"));
+                    var paths = new List<string>();
+                    foreach (var n in names)
                     {
-                        VaultFile.DeleteEntries(vaultPath, master!, new[] { entry });
-                        Logger.Write("文件", "删除：" + entry);
+                        string p = SafeEntryPath(cwd.Length == 0 ? n : cwd + "/" + n, false);
+                        if (EntryExists(p)) paths.Add(p);
                     }
-                    return new { ok = true };
+                    if (paths.Count > 0)
+                    {
+                        VaultFile.DeleteEntries(vaultPath, master!, paths);
+                        Logger.Write("文件", $"删除 {paths.Count} 项：" + Clean(string.Join("、", paths), 200));
+                    }
+                    return new { ok = true, count = paths.Count };
                 }
 
                 case "move":
@@ -407,6 +422,122 @@ namespace SecretVault
                 case "windowAction":
                     form.WindowAction(S(args, "action"));
                     return new { ok = true };
+
+                case "pasteFromClipboard":
+                {
+                    // 从系统剪贴板导入（资源管理器里复制/剪切的文件/文件夹 → 加密进保险库）
+                    RequireUnlocked();
+                    string cwd = SafeEntryPath(S(args, "cwd"));
+                    var files = new List<string>();
+                    bool isMove = false;
+                    try
+                    {
+                        var data = Clipboard.GetDataObject();
+                        if (data != null && data.GetDataPresent(DataFormats.FileDrop))
+                        {
+                            if (data.GetData(DataFormats.FileDrop) is string[] arr)
+                                files.AddRange(arr.Where(x => !string.IsNullOrEmpty(x)));
+                            var eff = data.GetData("Preferred DropEffect");   // 资源管理器“剪切”标记为 Move
+                            if (eff is System.IO.MemoryStream ms)
+                            {
+                                var buf = new byte[4];
+                                ms.Position = 0;
+                                ms.Read(buf, 0, 4);
+                                isMove = BitConverter.ToInt32(buf, 0) == 1;
+                            }
+                        }
+                    }
+                    catch (Exception ex) { throw new Exception("读取系统剪贴板失败：" + Clean(ex.Message, 120)); }
+                    if (files.Count == 0) throw new Exception("系统剪贴板里没有可导入的文件");
+                    var before = SnapshotEntries();
+                    var srcFiles = files.Where(f => File.Exists(f)).ToList();
+                    var srcDirs = files.Where(d => Directory.Exists(d)).ToList();
+                    foreach (var f in srcFiles) VaultFile.ImportFiles(vaultPath, master!, new[] { f }, cwd);
+                    foreach (var d in srcDirs) VaultFile.ImportDirectory(vaultPath, master!, d, cwd);
+                    var added = NewEntries(before)
+                        .Where(x => x.IsFile)
+                        .Select(x => new
+                        {
+                            relPath = cwd.Length == 0 ? x.Name
+                                : (x.Name.StartsWith(cwd + "/", StringComparison.Ordinal) ? x.Name.Substring(cwd.Length + 1) : x.Name),
+                            ext = ExtOf(x.Leaf),
+                            size = x.PlainLength,
+                            ctime = Fmt(x.Created),
+                            mtime = Fmt(x.Modified),
+                        })
+                        .ToList();
+                    if (isMove)
+                    {
+                        foreach (var f in srcFiles) { try { File.Delete(f); } catch { } }
+                        foreach (var d in srcDirs) { try { Utils.DeleteTreeRobust(d); } catch { } }
+                    }
+                    Logger.Write("文件", $"从系统剪贴板{(isMove ? "剪切" : "复制")}导入 {added.Count} 个文件（{(cwd.Length == 0 ? "根目录" : cwd)}）");
+                    return new { entries = added, count = added.Count, moved = isMove };
+                }
+
+                case "copyToClipboard":
+                {
+                    // 把保险库内选中的文件/文件夹解密到临时目录并放入系统剪贴板（支持多选，可一起粘贴到资源管理器）
+                    RequireUnlocked();
+                    string cwd = SafeEntryPath(S(args, "cwd"));
+                    var names = S(args, "names").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(x => x.Trim('\r', ' ')).Where(x => x.Length > 0).ToList();
+                    if (names.Count == 0) names.Add(S(args, "name"));
+                    var all = VaultFile.ListEntries(vaultPath);
+                    string clipRoot = Path.Combine(Path.GetTempPath(), "DH-BOX", "clip", Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(clipRoot);
+                    var col = new System.Collections.Specialized.StringCollection();
+                    long total = 0;
+                    foreach (var nm in names)
+                    {
+                        string entry = SafeEntryPath(cwd.Length == 0 ? nm : cwd + "/" + nm, false);
+                        bool isDir = all.Any(x => x.Name == entry && !x.IsFile);
+                        if (!isDir && !all.Any(x => x.Name == entry && x.IsFile)) continue;
+                        string leaf = entry.Substring(entry.LastIndexOf('/') + 1);
+                        string dest = Path.Combine(clipRoot, SafeName(leaf));
+                        if (isDir)
+                        {
+                            Directory.CreateDirectory(dest);
+                            string prefix = entry + "/";
+                            foreach (var f in all.Where(x => x.IsFile && x.Name.StartsWith(prefix, StringComparison.Ordinal)))
+                            {
+                                string rel = f.Name.Substring(prefix.Length).Replace('/', Path.DirectorySeparatorChar);
+                                string target = Path.Combine(dest, rel);
+                                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                                VaultFile.ExtractFile(vaultPath, master!, f.Name, target);
+                            }
+                        }
+                        else
+                        {
+                            VaultFile.ExtractFile(vaultPath, master!, entry, dest);
+                        }
+                        col.Add(dest);
+                        try { total += isDir ? Directory.GetFiles(dest, "*", SearchOption.AllDirectories).Sum(x => new FileInfo(x).Length) : new FileInfo(dest).Length; }
+                        catch { }
+                    }
+                    if (col.Count == 0) throw new Exception("保险库中找不到该条目");
+                    try { Clipboard.SetFileDropList(col); }
+                    catch (Exception ex) { throw new Exception("写入系统剪贴板失败：" + Clean(ex.Message, 120)); }
+                    Logger.Write("文件", $"已复制 {col.Count} 项到系统剪贴板（明文临时副本，锁定后自动清理）");
+                    return new { ok = true, local = col[0], count = col.Count, size = total };
+                }
+                case "fileIcons":
+                {
+                    // 返回扩展名 → 系统默认图标（data:image/png;base64）
+                    var exts = S(args, "exts").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                    var result = new Dictionary<string, string>();
+                    foreach (var ext in exts)
+                    {
+                        string key = ext.Length == 0 ? "__file__" : ext.ToLowerInvariant();
+                        if (!iconCache.TryGetValue(key, out var b64))
+                        {
+                            b64 = GetShellIconBase64(key);
+                            iconCache[key] = b64;
+                        }
+                        result[key] = b64;
+                    }
+                    return new { icons = result };
+                }
 
                 case "setTheme":
                     // 网页主题切换 → 窗口标题栏跟随深浅（沉浸式深色标题栏）
@@ -601,6 +732,63 @@ namespace SecretVault
             return sb.ToString();
         }
 
+        /// <summary>清理剪贴板临时明文副本目录（锁定/退出时调用）。</summary>
+        private static void CleanClipCache()
+        {
+            try { Utils.DeleteTreeRobust(Path.Combine(Path.GetTempPath(), "DH-BOX", "clip")); }
+            catch { }
+        }
+
+        /// <summary>取系统默认图标（kind：文件扩展名、"__dir__" 或 "__file__"），转为 base64 PNG。</summary>
+        private static string GetShellIconBase64(string kind)
+        {
+            try
+            {
+                var shfi = new SHFILEINFO();
+                uint attr = 0x80;                       // FILE_ATTRIBUTE_NORMAL
+                string path = "file." + kind;
+                if (kind == "__dir__") { attr = 0x10; path = "folder"; }   // FILE_ATTRIBUTE_DIRECTORY
+                uint flags = 0x00000100 | 0x10;         // SHGFI_ICON | SHGFI_USEFILEATTRIBUTES（按扩展名取，不访问磁盘）
+                SHGetFileInfo(path, attr, ref shfi, (uint)Marshal.SizeOf(typeof(SHFILEINFO)), flags);
+                if (shfi.hIcon == IntPtr.Zero) return "";
+                try
+                {
+                    using var ico = (Icon)Icon.FromHandle(shfi.hIcon).Clone();
+                    using var bmp = ico.ToBitmap();
+                    using var ms = new MemoryStream();
+                    bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    return "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+                }
+                finally { DestroyIcon(shfi.hIcon); }
+            }
+            catch { return ""; }
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct SHFILEINFO
+        {
+            public IntPtr hIcon;
+            public int iIcon;
+            public uint dwAttributes;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            public string szDisplayName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
+            public string szTypeName;
+        }
+
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes,
+            ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
+        /// <summary>读取参数里的字符串数组。</summary>
+        private static List<string> SList(Dictionary<string, object> args, string key)
+            => args.TryGetValue(key, out var v) && v is System.Collections.ArrayList arr
+                ? arr.Cast<object>().Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList()
+                : new List<string>();
+
         private static string EnsureOpenCache()
         {
             string dir = Path.Combine(Path.GetTempPath(), "DH-BOX", "open");
@@ -642,6 +830,7 @@ namespace SecretVault
         {
             try { FlushOpenedFiles(); } catch { }
             CleanOpenCache();
+            CleanClipCache();
             master?.Wipe();
             master = null;
         }

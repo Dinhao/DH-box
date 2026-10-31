@@ -49,6 +49,7 @@ namespace SecretVault
         public VaultContainer.VaultHeader Header = new();
         public int Version = VaultContainer.Version;
         public List<VaultEntry> Entries = new();
+        public byte[]? DirMac;   // v3：条目目录完整性 MAC（32B）
     }
 
     /// <summary>
@@ -84,7 +85,8 @@ namespace SecretVault
         public const string Magic = "VLT1";
 
         /// <summary>当前写出的版本号。</summary>
-        public const int Version = 2;
+        public const int Version = 3;        // v3：条目目录带完整性 MAC（防元数据篡改）
+        public const int VersionV2 = 2;      // v2：条目含时间戳，无目录 MAC
 
         /// <summary>兼容读取的旧版本号（条目无时间戳字段）。</summary>
         public const int VersionLegacy = 1;
@@ -125,7 +127,8 @@ namespace SecretVault
             using var fs = File.OpenRead(path);
             using var r = new BinaryReader(fs, Encoding.UTF8);
             var body = new VaultBody { Header = ReadHeader(r, out int version), Version = version };
-            body.Entries = ReadEntries(r, fs, version);
+            body.Entries = ReadEntries(r, fs, version, out var dirMac);
+            body.DirMac = dirMac;
             return body;
         }
 
@@ -135,7 +138,7 @@ namespace SecretVault
             if (Encoding.ASCII.GetString(r.ReadBytes(4)) != Magic)
                 throw new InvalidDataException("不是有效的保险箱容器文件。");
             version = checked((int)r.ReadUInt32());
-            if (version != VersionLegacy && version != Version)
+            if (version < VersionLegacy || version > Version)
                 throw new InvalidDataException("容器版本不受支持，请使用对应版本的保险箱工具。");
 
             var h = new VaultHeader
@@ -157,27 +160,28 @@ namespace SecretVault
         }
 
         /// <summary>读取条目表（跳过文件密文，只记录偏移与长度）。</summary>
-        public static List<VaultEntry> ReadEntries(BinaryReader r, FileStream fs, int version)
+        public static List<VaultEntry> ReadEntries(BinaryReader r, FileStream fs, int version, out byte[]? dirMac)
         {
+            dirMac = null;
             int count = r.ReadInt32();
             if (count is < 0 or > 1_000_000)
                 throw new InvalidDataException("容器条目区损坏。");
             var list = new List<VaultEntry>(count);
-            for (int i = 0; i < count; i++)
+
+            // 读取单条元数据（不含密文）
+            VaultEntry ReadMeta()
             {
                 byte type = r.ReadByte();
                 int nameLen = r.ReadInt32();
                 if (nameLen is <= 0 or > 4096)
                     throw new InvalidDataException("容器条目损坏。");
                 string name = Encoding.UTF8.GetString(r.ReadBytes(nameLen));
-
                 long mtime = 0, ctime = 0;
-                if (version >= Version)
+                if (version >= VersionV2)   // v2 起条目含时间戳
                 {
                     mtime = r.ReadInt64();
                     ctime = r.ReadInt64();
                 }
-
                 var e = new VaultEntry
                 {
                     Name = name,
@@ -189,13 +193,34 @@ namespace SecretVault
                 {
                     long plainLen = r.ReadInt64();
                     if (plainLen < 0) throw new InvalidDataException("容器条目损坏。");
-                    long sealedLen = SealedLength(plainLen);
                     e.PlainLength = plainLen;
+                    e.SealedLength = SealedLength(plainLen);
+                }
+                return e;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                var e = ReadMeta();
+                if (version < Version && e.IsFile)
+                {
+                    // v1/v2 布局：每个条目的密文紧跟在其元数据之后 → 边读边跳过
                     e.DataOffset = fs.Position;
-                    e.SealedLength = sealedLen;
-                    fs.Seek(sealedLen, SeekOrigin.Current);
+                    fs.Seek(e.SealedLength, SeekOrigin.Current);
                 }
                 list.Add(e);
+            }
+
+            if (version >= Version)
+            {
+                // v3 布局：目录区连续存放，随后是 32 字节目录完整性 MAC，再之后才是各条目密文
+                dirMac = r.ReadBytes(CryptoUtil.HmacSize);
+                foreach (var e in list)
+                {
+                    if (!e.IsFile) continue;
+                    e.DataOffset = fs.Position;
+                    fs.Seek(e.SealedLength, SeekOrigin.Current);
+                }
             }
             return list;
         }
@@ -233,15 +258,39 @@ namespace SecretVault
             if (e.IsFile) w.Write(e.PlainLength);
         }
 
-        /// <summary>写出一个空容器（头 + 条目数 0）。用于创建新保险箱。</summary>
-        public static void WriteNew(string path, VaultHeader h)
+        /// <summary>写出条目目录（条目数 + 元数据），不写密文。</summary>
+        public static void WriteEntries(BinaryWriter w, List<VaultEntry> entries)
+        {
+            w.Write(entries.Count);
+            foreach (var e in entries) WriteEntryMeta(w, e);
+        }
+
+        /// <summary>目录完整性 MAC（v3）：HMAC-SHA256(派生目录密钥, 条目目录字节)。</summary>
+        public static byte[] ComputeDirMac(MasterKeys mk, List<VaultEntry> entries)
+        {
+            var macKey = new byte[CryptoUtil.HmacKeySize];
+            Buffer.BlockCopy(mk.WrapKey, CryptoUtil.AesKeySize, macKey, 0, CryptoUtil.HmacKeySize);
+            var dirKey = CryptoUtil.Hmac(macKey, Encoding.UTF8.GetBytes("DHBOX-DIR-INTEGRITY-v3"));
+            try
+            {
+                using var ms = new MemoryStream();
+                using (var w = new BinaryWriter(ms, Encoding.UTF8, true)) WriteEntries(w, entries);
+                return CryptoUtil.Hmac(dirKey, ms.ToArray());
+            }
+            finally { CryptoUtil.Wipe(macKey); CryptoUtil.Wipe(dirKey); }
+        }
+
+        /// <summary>写出一个空容器（v3：头 + 空目录 + 目录 MAC）。用于创建新保险箱。</summary>
+        public static void WriteNew(string path, VaultHeader h, MasterKeys mk)
         {
             string tmp = path + ".tmp";
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
             using (var w = new BinaryWriter(fs, Encoding.UTF8))
             {
-                WriteHeader(w, h);
-                w.Write(0); // 条目数
+                var empty = new List<VaultEntry>();
+                WriteHeader(w, h, Version);
+                WriteEntries(w, empty);
+                w.Write(ComputeDirMac(mk, empty));
                 w.Flush();
                 fs.Flush(true);
             }
